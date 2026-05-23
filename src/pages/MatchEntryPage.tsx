@@ -11,6 +11,7 @@ import { Check, Loader2, Minus, Plus, ClipboardCheck } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useDialogs } from '../components/DialogsContext'
 import { CustomCalendar } from '../components/CustomCalendar'
+import { CustomSelect } from '../components/CustomSelect'
 import { Empty } from '../components/ui/Empty'
 import { Spinner } from '../components/Spinner'
 
@@ -189,20 +190,15 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
     padding: '1rem',
   }
 
-  // Стиль select
-  const selectStyle = (accentColor?: string | null): React.CSSProperties => ({
-    background: 'rgba(255,255,255,0.06)',
-    color:      'var(--color-brand-text)',
-    border:     accentColor ? `1px solid ${accentColor}55` : '1px solid rgba(255,255,255,0.12)',
-    borderRadius: '0.75rem',
-    padding: '0.6rem 0.75rem',
-    width: '100%',
-    appearance: 'none' as const,
-    cursor: 'pointer',
-    fontSize: '0.875rem',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-  })
+  // Опции для выбора часа и минуты
+  const hourOptions = Array.from({ length: 24 }, (_, i) => ({
+    value: i,
+    label: String(i).padStart(2, '0'),
+  }))
+  const minuteOptions = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => ({
+    value: m,
+    label: String(m).padStart(2, '0'),
+  }))
 
   return (
     <div className="space-y-5">
@@ -256,18 +252,12 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
                 ⏰ Время начала
               </div>
               <div className="flex items-center gap-3">
-                <select
+                <CustomSelect
                   value={hour}
-                  onChange={e => setHour(+e.target.value)}
-                  style={selectStyle()}
-                  className="text-center font-semibold"
-                >
-                  {Array.from({ length: 24 }, (_, i) => (
-                    <option key={i} value={i} style={{ background: '#1c2028' }}>
-                      {String(i).padStart(2, '0')}
-                    </option>
-                  ))}
-                </select>
+                  onChange={v => setHour(v as number)}
+                  options={hourOptions}
+                  className="flex-1"
+                />
 
                 <span
                   className="text-2xl font-black flex-shrink-0"
@@ -276,18 +266,12 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
                   :
                 </span>
 
-                <select
+                <CustomSelect
                   value={minute}
-                  onChange={e => setMinute(+e.target.value)}
-                  style={selectStyle()}
-                  className="text-center font-semibold"
-                >
-                  {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
-                    <option key={m} value={m} style={{ background: '#1c2028' }}>
-                      {String(m).padStart(2, '0')}
-                    </option>
-                  ))}
-                </select>
+                  onChange={v => setMinute(v as number)}
+                  options={minuteOptions}
+                  className="flex-1"
+                />
               </div>
             </div>
           </div>
@@ -306,34 +290,19 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
                 <label className="block text-xs mb-1.5" style={{ color: 'var(--color-brand-text-muted)' }}>
                   Команда 1 (хозяева)
                 </label>
-                <div className="relative">
-                  {/* Цветовой кружок команды */}
-                  {teamA && (
-                    <div
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full pointer-events-none z-10"
-                      style={{ backgroundColor: teamA.color }}
-                    />
-                  )}
-                  <select
-                    value={teamAId}
-                    onChange={e => {
-                      setTeamAId(e.target.value)
-                      // Если выбрали ту же, что уже стоит в B — сбрасываем B
-                      if (e.target.value === teamBId) setTeamBId('')
-                    }}
-                    style={{
-                      ...selectStyle(teamA?.color),
-                      paddingLeft: teamA ? '2rem' : '0.75rem',
-                    }}
-                  >
-                    <option value="" style={{ background: '#1c2028' }}>— Выберите команду —</option>
-                    {teams.map(t => (
-                      <option key={t.id} value={t.id} style={{ background: '#1c2028' }}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <CustomSelect
+                  value={teamAId}
+                  onChange={v => {
+                    const val = String(v)
+                    setTeamAId(val)
+                    if (val === teamBId) setTeamBId('')
+                  }}
+                  options={[
+                    ...teams.map(t => ({ value: t.id, label: t.name, color: t.color })),
+                  ]}
+                  placeholder="— Выберите команду —"
+                  accentColor={teamA?.color}
+                />
               </div>
 
               {/* Команда B */}
@@ -341,29 +310,13 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
                 <label className="block text-xs mb-1.5" style={{ color: 'var(--color-brand-text-muted)' }}>
                   Команда 2 (гости)
                 </label>
-                <div className="relative">
-                  {teamB && (
-                    <div
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full pointer-events-none z-10"
-                      style={{ backgroundColor: teamB.color }}
-                    />
-                  )}
-                  <select
-                    value={teamBId}
-                    onChange={e => setTeamBId(e.target.value)}
-                    style={{
-                      ...selectStyle(teamB?.color),
-                      paddingLeft: teamB ? '2rem' : '0.75rem',
-                    }}
-                  >
-                    <option value="" style={{ background: '#1c2028' }}>— Выберите команду —</option>
-                    {teamsForB.map(t => (
-                      <option key={t.id} value={t.id} style={{ background: '#1c2028' }}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <CustomSelect
+                  value={teamBId}
+                  onChange={v => setTeamBId(String(v))}
+                  options={teamsForB.map(t => ({ value: t.id, label: t.name, color: t.color }))}
+                  placeholder="— Выберите команду —"
+                  accentColor={teamB?.color}
+                />
               </div>
             </div>
 

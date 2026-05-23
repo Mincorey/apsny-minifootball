@@ -8,6 +8,7 @@ import {
   Shield,
   Star,
   ClipboardList,
+  Settings2,
 } from 'lucide-react'
 import { useData } from './context/DataContext'
 import { useAuth } from './context/AuthContext'
@@ -22,13 +23,14 @@ import { SchedulePage } from './pages/SchedulePage'
 import { ToursPage } from './pages/ToursPage'
 import { TeamsPage } from './pages/TeamsPage'
 import { MatchEntryPage } from './pages/MatchEntryPage'
+import { AdminPanelPage } from './pages/AdminPanelPage'
 import { Empty } from './components/ui/Empty'
 import { ADMIN_LOGIN, ADMIN_PASSWORD_HASH } from './constants'
 import type { TeamWithPlayers, Match } from './types/database'
 
-type Tab = 'table' | 'scorers' | 'schedule' | 'tours' | 'teams' | 'match-entry'
+type Tab = 'table' | 'scorers' | 'schedule' | 'tours' | 'teams' | 'match-entry' | 'admin'
 
-// Вкладка 'match-entry' добавляется динамически только для админов (см. visibleTabs)
+// Вкладка 'match-entry' и 'admin' добавляются динамически только для админов (см. visibleTabs)
 const ALL_TABS: { id: Tab; label: string; icon: typeof Trophy; adminOnly?: boolean }[] = [
   { id: 'table',       label: 'Таблица',      icon: LayoutDashboard },
   { id: 'scorers',     label: 'Бомбардиры',   icon: Star },
@@ -36,6 +38,7 @@ const ALL_TABS: { id: Tab; label: string; icon: typeof Trophy; adminOnly?: boole
   { id: 'tours',       label: 'Туры',         icon: ListOrdered },
   { id: 'teams',       label: 'Команды',      icon: Users },
   { id: 'match-entry', label: 'Итоги матча',  icon: ClipboardList, adminOnly: true },
+  { id: 'admin',       label: 'Управление',   icon: Settings2,     adminOnly: true },
 ]
 
 export default function AppV2() {
@@ -291,6 +294,9 @@ export default function AppV2() {
                 leagueName={selectedLeague.name}
                 seasonName={season?.name}
               />
+            )}
+            {activeTab === 'admin' && isAdmin && (
+              <AdminPanelPage seasonName={season?.name} />
             )}
           </>
         )}
