@@ -117,11 +117,11 @@ function PlayerStatRow({ name, number: num, stats, onChange }: PlayerRowProps) {
 
   return (
     <div
-      className="flex items-center gap-2 px-3 py-2 rounded-xl transition-colors"
+      className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1.5 px-3 py-2 rounded-xl transition-colors"
       style={{ background: hasStats ? 'rgba(0,117,49,0.07)' : 'rgba(255,255,255,0.02)' }}
     >
-      {/* Номер + имя */}
-      <div className="flex items-center gap-2 flex-1 min-w-0">
+      {/* Номер + имя — полная ширина на мобиле, flex-1 на sm */}
+      <div className="flex items-center gap-2 w-full sm:flex-1 sm:w-auto min-w-0">
         {num != null && (
           <span className="label-caps text-[9px] w-5 text-center flex-shrink-0"
             style={{ color: 'var(--color-brand-outline)' }}>
@@ -134,8 +134,8 @@ function PlayerStatRow({ name, number: num, stats, onChange }: PlayerRowProps) {
         </span>
       </div>
 
-      {/* Счётчики */}
-      <div className="flex items-center gap-3 flex-shrink-0">
+      {/* Счётчики — на мобиле растянуты на всю ширину, на sm — компактно справа */}
+      <div className="flex items-center w-full sm:w-auto sm:flex-shrink-0 justify-between sm:justify-start sm:gap-3">
         <div className="flex flex-col items-center gap-0.5">
           <span className="text-[9px] leading-none" style={{ color: 'var(--color-brand-outline)' }}>⚽</span>
           <MiniCounter value={stats.goals}        onChange={v => onChange('goals', v)} />
