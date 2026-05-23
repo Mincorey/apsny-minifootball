@@ -89,6 +89,7 @@ export interface CreatePlayedMatchArgs {
   scoreA:   number
   scoreB:   number
   playedAt: string  // ISO-строка
+  stats?:   Omit<MatchPlayerStats, 'id' | 'match_id'>[]
 }
 
 // ── Тип контекста ─────────────────────────────────────────────────────────────
@@ -219,7 +220,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (stats.length > 0) {
       await supabase.from('match_player_stats').delete().eq('match_id', matchId)
       const rows = stats.map(s => ({ ...s, id: generateUUID(), match_id: matchId }))
-      const { error: statsErr } = await supabase.from('match_player_stats').insert(rows)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error: statsErr } = await (supabase.from('match_player_stats') as any).insert(rows)
       if (statsErr) return { error: statsErr.message }
     }
     refetchMatches(); refetchStandings(); refetchScorers()
@@ -302,7 +304,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
    * После сохранения триггерит пересчёт standings и scorers.
    */
   const createPlayedMatch = useCallback(async ({
-    leagueId, teamAId, teamBId, scoreA, scoreB, playedAt,
+    leagueId, teamAId, teamBId, scoreA, scoreB, playedAt, stats = [],
   }: CreatePlayedMatchArgs): Promise<{ error: string | null }> => {
     // Определяем следующий номер тура
     const tourRes = await supabase
@@ -314,9 +316,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const tourRows = tourRes.data as { tour: number }[] | null
     const nextTour = (tourRows?.[0]?.tour ?? 0) + 1
 
+    // Генерируем ID заранее, чтобы использовать его для статистики
+    const matchId = generateUUID()
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('matches') as any).insert({
-      id:           generateUUID(),
+    const { error: matchErr } = await (supabase.from('matches') as any).insert({
+      id:           matchId,
       league_id:    leagueId,
       team_a_id:    teamAId,
       team_b_id:    teamBId,
@@ -327,13 +332,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       played_at:    playedAt,
       scheduled_at: playedAt,
     })
+    if (matchErr) return { error: matchErr.message }
 
-    if (!error) {
-      refetchMatches()
-      refetchStandings()
-      refetchScorers()
+    // Сохраняем статистику игроков (если предоставлена)
+    if (stats.length > 0) {
+      const rows = stats.map(s => ({ ...s, id: generateUUID(), match_id: matchId }))
+      const { error: statsErr } = await (supabase.from('match_player_stats') as any).insert(rows)  // eslint-disable-line
+      if (statsErr) return { error: statsErr.message }
     }
-    return { error: error?.message ?? null }
+
+    refetchMatches()
+    refetchStandings()
+    refetchScorers()
+    return { error: null }
   }, [refetchMatches, refetchStandings, refetchScorers])
 
   // ── Возврат Provider ─────────────────────────────────────────────────────────
