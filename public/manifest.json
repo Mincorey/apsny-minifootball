@@ -1,0 +1,15 @@
+{
+  "name": "Чемпионат Абхазии МФЛ",
+  "short_name": "Абхазия МФЛ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#3d195d",
+  "theme_color": "#3d195d",
+  "icons": [
+    {
+      "src": "https://img.icons8.com/color/512/football.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
