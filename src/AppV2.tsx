@@ -202,7 +202,7 @@ export default function AppV2() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className="flex items-center gap-2 px-3.5 sm:px-5 py-2 sm:py-2.5 text-sm sm:text-base font-semibold whitespace-nowrap transition-all duration-200 rounded-xl flex-shrink-0 active:scale-95"
+                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-5 py-2 sm:py-2.5 text-sm font-semibold whitespace-nowrap transition-all duration-200 rounded-xl flex-shrink-0 active:scale-95"
                   style={active ? {
                     color: '#003914',
                     background: 'var(--color-brand-primary)',
@@ -224,13 +224,14 @@ export default function AppV2() {
                       e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
                     }
                   }}
+                  title={tab.label}
                 >
                   <Icon size={16} />
-                  {tab.label}
+                  <span className="hidden sm:inline">{tab.label}</span>
                   {/* Маркер «только для админа» */}
                   {tab.adminOnly && !active && (
                     <span
-                      className="ml-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                       style={{ background: 'var(--color-brand-primary)', opacity: 0.7 }}
                     />
                   )}
