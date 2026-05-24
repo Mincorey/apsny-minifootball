@@ -10,6 +10,9 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // ── Service Worker: cleanup old + register new ─────────────────────────
       (function () {
-        var CURRENT_CACHE = 'apsny-mfl-v4
+        var CURRENT = "apsny-mfl-v4";
+        if (!("serviceWorker" in navigator)) return;
+
+        caches.keys().then(function (keys) {
+          var hasOld = keys.some(functi
