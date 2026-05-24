@@ -100,7 +100,7 @@ export default function AppV2() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
 
           {/* ROW 1: Логотип + Название по центру (+ Admin badge под названием) */}
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-2">
             {/* Кликабельная область: логотип + заголовок */}
             <div
               className="flex items-center gap-3 cursor-pointer select-none"
@@ -108,31 +108,31 @@ export default function AppV2() {
               title="5 кликов для входа администратора"
             >
               <div
-                className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'var(--color-brand-accent)', boxShadow: '0 0 14px rgba(0,117,49,0.45)' }}
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'var(--color-brand-accent)', boxShadow: '0 0 18px rgba(0,117,49,0.50)' }}
               >
-                <Trophy size={20} className="text-white" />
+                <Trophy size={26} className="text-white" />
               </div>
               <h1
-                className="text-base sm:text-lg font-bold leading-tight hover:text-green-400 transition-colors text-center"
+                className="text-lg sm:text-xl font-extrabold leading-snug hover:text-green-400 transition-colors text-center"
                 style={{ color: 'var(--color-brand-text)' }}
               >
-                Чемпионат Абхазии по мини-футболу
+                Чемпионат Абхазии<br className="sm:hidden" /> по мини-футболу
               </h1>
             </div>
 
             {/* Admin badge + кнопка выхода — по центру под названием */}
             {isAdmin && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <span
-                  className="text-xs font-semibold px-3.5 py-1.5 rounded-lg"
+                  className="text-sm font-semibold px-4 py-2 rounded-xl"
                   style={{ background: 'rgba(0,117,49,0.18)', color: 'var(--color-brand-primary)' }}
                 >
                   🔐 Админ
                 </span>
                 <button
                   onClick={() => { localStorage.removeItem('adminSessionToken'); setIsAdminMode(false) }}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
                   style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}
                   title="Выйти из режима администратора"
                 >
