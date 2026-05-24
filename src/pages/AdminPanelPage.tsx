@@ -13,6 +13,7 @@ import {
   ChevronDown, ChevronUp, Loader2, Check, Upload, Edit2, X,
 } from 'lucide-react'
 import { uploadAndCompressImage } from '../lib/imageUtils'
+import { generateUUID } from '../lib/uuid'
 import { useData } from '../context/DataContext'
 import { useDialogs } from '../components/DialogsContext'
 import { CustomSelect } from '../components/CustomSelect'
@@ -255,7 +256,7 @@ function TeamsSection() {
     const file = e.currentTarget.files?.[0]
     if (!file) return
     setUploadingLogo(true)
-    const fileName = `team-${crypto.randomUUID()}-${Date.now()}.jpg`
+    const fileName = `team-${generateUUID()}-${Date.now()}.jpg`
     const result = await uploadAndCompressImage('team-logos', file, 'teams', fileName)
     if (result) setLogoUrl(result.url)
     else showToast('Ошибка при загрузке логотипа', 'error')
@@ -268,7 +269,7 @@ function TeamsSection() {
     const file = e.currentTarget.files?.[0]
     if (!file) return
     setEditUploadingLogo(true)
-    const fileName = `team-${crypto.randomUUID()}-${Date.now()}.jpg`
+    const fileName = `team-${generateUUID()}-${Date.now()}.jpg`
     const result = await uploadAndCompressImage('team-logos', file, 'teams', fileName)
     if (result) setEditLogoUrl(result.url)
     else showToast('Ошибка при загрузке логотипа', 'error')
@@ -683,7 +684,7 @@ function ToursSection() {
   const [tourNum,  setTourNum]  = useState<number>(nextTour)
   const [date,     setDate]     = useState('')
   const [time,     setTime]     = useState('18:00')
-  const [fixtures, setFixtures] = useState<FixtureRow[]>([{ id: crypto.randomUUID(), teamAId: '', teamBId: '' }])
+  const [fixtures, setFixtures] = useState<FixtureRow[]>([{ id: generateUUID(), teamAId: '', teamBId: '' }])
   const [saving,   setSaving]   = useState(false)
   const [success,  setSuccess]  = useState(false)
 
@@ -694,7 +695,7 @@ function ToursSection() {
     setFixtures(rows => rows.map(r => r.id === id ? { ...r, [field]: value } : r))
   }
 
-  const addFixture = () => setFixtures(rows => [...rows, { id: crypto.randomUUID(), teamAId: '', teamBId: '' }])
+  const addFixture = () => setFixtures(rows => [...rows, { id: generateUUID(), teamAId: '', teamBId: '' }])
 
   const removeFixture = (id: string) =>
     setFixtures(rows => rows.length > 1 ? rows.filter(r => r.id !== id) : rows)
@@ -734,7 +735,7 @@ function ToursSection() {
       setTimeout(() => {
         setSuccess(false)
         setTourNum(n => n + 1)
-        setFixtures([{ id: crypto.randomUUID(), teamAId: '', teamBId: '' }])
+        setFixtures([{ id: generateUUID(), teamAId: '', teamBId: '' }])
         setDate('')
       }, 2000)
     }

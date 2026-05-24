@@ -71,7 +71,6 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
     setNewPlayerRole('')
     setShowAddForm(false)
     onRefetch?.()
-    onSave()
   }
 
   const handleStartEditPlayer = (player: Player) => {
@@ -123,7 +122,6 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
     setEditingPlayerNumber('')
     setEditingPlayerPhotoUrl('')
     onRefetch?.()
-    onSave()
   }
 
   const handleDeletePlayer = async (playerId: string) => {
@@ -139,7 +137,6 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
 
     setPlayers(players.filter((p) => p.id !== playerId))
     onRefetch?.()
-    onSave()
   }
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -216,6 +213,8 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
     onRefetch?.()
     onSave()
   }
+
+  const isDirty = teamName !== team.name || teamColor !== team.color || teamLogoUrl !== (team.logo_url || '')
 
   return (
     <div
@@ -628,7 +627,7 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
             </button>
             <button
               onClick={handleSaveTeam}
-              disabled={isLoading}
+              disabled={isLoading || !isDirty}
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg transition flex items-center justify-center gap-2"
             >
               {isLoading && <Loader2 size={14} className="animate-spin" />}
