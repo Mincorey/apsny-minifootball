@@ -1,15 +1,6 @@
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open('abkhazia-mfl-cache-v1').then((cache) => {
-      return cache.addAll(['/', '/index.html', '/src/index.css', '/src/main.tsx', '/src/App.tsx']);
-    })
-  );
-});
+// ─── Cache name — bump this string after each deploy ───────────────────────
+const CACHE_NAME = 'apsny-mfl-v3';
 
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
-});
+// ─── Install: skip waiting, cache only the shell ───────────────────────────
+self.addEventListener('install', (event) => {
+  self.skipWaiting(); // activate immediately, don't wait for old ta
