@@ -169,7 +169,7 @@ export default function AppV2() {
           )}
 
           {/* ROW 3: Навигационные вкладки ───────────────────────────────────── */}
-          <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          <div className="flex gap-0.5 sm:gap-1 sm:overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
             {visibleTabs.map(tab => {
               const Icon = tab.icon
               const active = activeTab === tab.id
@@ -177,7 +177,7 @@ export default function AppV2() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-5 py-2 sm:py-2.5 text-sm font-semibold whitespace-nowrap transition-all duration-200 rounded-xl flex-shrink-0 active:scale-95"
+                  className="flex-1 sm:flex-none sm:flex-shrink-0 flex items-center justify-center sm:justify-start gap-1.5 sm:px-3 py-3 sm:py-2 sm:text-xs text-sm font-semibold whitespace-nowrap transition-all duration-200 rounded-xl active:scale-95"
                   style={active ? {
                     color: '#003914',
                     background: 'var(--color-brand-primary)',

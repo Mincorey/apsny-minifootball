@@ -7,11 +7,12 @@
  *   3. Туры    — запланировать матч(и) нового тура (EPL-стиль)
  */
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   Trophy, Users, ListOrdered, Plus, Trash2,
-  ChevronDown, ChevronUp, Loader2, Check,
+  ChevronDown, ChevronUp, Loader2, Check, Upload,
 } from 'lucide-react'
+import { uploadAndCompressImage } from '../lib/imageUtils'
 import { useData } from '../context/DataContext'
 import { useDialogs } from '../components/DialogsContext'
 import { CustomSelect } from '../components/CustomSelect'
@@ -229,12 +230,31 @@ function TeamsSection() {
   } = useData()
   const { showToast, showConfirm } = useDialogs()
 
-  const [name,    setName]    = useState('')
-  const [color,   setColor]   = useState(TEAM_COLORS[0])
-  const [saving,  setSaving]  = useState(false)
-  const [success, setSuccess] = useState(false)
+  const [name,          setName]          = useState('')
+  const [color,         setColor]         = useState(TEAM_COLORS[0])
+  const [logoUrl,       setLogoUrl]       = useState('')
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [saving,        setSaving]        = useState(false)
+  const [success,       setSuccess]       = useState(false)
+
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const leagueOptions = leagues.map(l => ({ value: l.id, label: l.name }))
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0]
+    if (!file) return
+    setUploadingLogo(true)
+    const fileName = `team-${crypto.randomUUID()}-${Date.now()}.jpg`
+    const result = await uploadAndCompressImage('team-logos', file, 'teams', fileName)
+    if (result) {
+      setLogoUrl(result.url)
+    } else {
+      showToast('Ошибка при загрузке логотипа', 'error')
+    }
+    setUploadingLogo(false)
+    e.currentTarget.value = ''
+  }
 
   const handleCreate = async () => {
     const trimmed = name.trim()
@@ -242,7 +262,7 @@ function TeamsSection() {
     if (!selectedLeague) { showToast('Выберите лигу', 'error'); return }
 
     setSaving(true)
-    const { error } = await createTeam({ leagueId: selectedLeague.id, name: trimmed, color })
+    const { error } = await createTeam({ leagueId: selectedLeague.id, name: trimmed, color, logoUrl: logoUrl || null })
     setSaving(false)
 
     if (error) {
@@ -250,6 +270,7 @@ function TeamsSection() {
     } else {
       setSuccess(true)
       setName('')
+      setLogoUrl('')
       showToast(`Команда «${trimmed}» добавлена`, 'success', 3000)
       setTimeout(() => setSuccess(false), 2000)
     }
@@ -361,6 +382,60 @@ function TeamsSection() {
                 />
               ))}
             </div>
+          </div>
+
+          {/* Загрузка логотипа команды */}
+          <div>
+            <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>Логотип команды (опционально)</p>
+            <div className="flex items-center gap-3">
+              {/* Превью логотипа */}
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+                style={{ background: 'rgba(255,255,255,0.05)', border: `2px solid ${logoUrl ? color : 'rgba(255,255,255,0.10)'}` }}
+              >
+                {logoUrl ? (
+                  <img src={logoUrl} alt="Logo preview" className="w-full h-full object-cover rounded-full" />
+                ) : (
+                  <Trophy size={18} style={{ color: 'var(--color-brand-outline)' }} />
+                )}
+              </div>
+              {/* Кнопка загрузки */}
+              <button
+                type="button"
+                onClick={() => logoInputRef.current?.click()}
+                disabled={uploadingLogo}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                style={{ background: 'rgba(52,152,219,0.10)', color: '#60a5fa', border: '1px solid rgba(52,152,219,0.20)' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(52,152,219,0.20)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(52,152,219,0.10)')}
+              >
+                {uploadingLogo
+                  ? <Loader2 size={13} className="animate-spin" />
+                  : <Upload size={13} />}
+                {uploadingLogo ? 'Загрузка...' : logoUrl ? 'Изменить логотип' : 'Загрузить логотип'}
+              </button>
+              {/* Удалить логотип */}
+              {logoUrl && (
+                <button
+                  type="button"
+                  onClick={() => setLogoUrl('')}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
+                  style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
+                  title="Убрать логотип"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleLogoUpload}
+              className="hidden"
+            />
           </div>
 
           <button
