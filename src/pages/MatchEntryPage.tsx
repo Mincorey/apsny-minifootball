@@ -7,14 +7,15 @@
  */
 
 import { useState, useEffect, type FormEvent } from 'react'
-import { Check, Loader2, Minus, Plus, ClipboardCheck, ChevronDown, ChevronUp } from 'lucide-react'
+import { Check, Loader2, Minus, Plus, ClipboardCheck, ChevronDown, ChevronUp, Edit2, Trash2, X } from 'lucide-react'
 import { useData } from '../context/DataContext'
+import { supabase } from '../lib/supabase'
 import { useDialogs } from '../components/DialogsContext'
 import { CustomCalendar } from '../components/CustomCalendar'
 import { CustomSelect } from '../components/CustomSelect'
 import { Empty } from '../components/ui/Empty'
 import { Spinner } from '../components/Spinner'
-import type { MatchPlayerStats } from '../types/database'
+import type { MatchPlayerStats, Match } from '../types/database'
 
 // ── Типы ──────────────────────────────────────────────────────────────────────
 
@@ -171,9 +172,11 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
     loadingTeams,
     matches,
     createPlayedMatch,
+    deleteMatch,
+    saveMatchResult,
   } = useData()
 
-  const { showToast } = useDialogs()
+  const { showToast, showConfirm } = useDialogs()
 
   // ── State формы ─────────────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
@@ -212,6 +215,95 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
   const [success, setSuccess] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
 
+  // ── Режим редактирования существующего матча ─────────────────────────────────
+  const [editingMatch, setEditingMatch] = useState<Match | null>(null)
+  const [loadingEdit,  setLoadingEdit]  = useState(false)
+
+  const handleStartEdit = async (match: Match) => {
+    setLoadingEdit(true)
+    setError(null)
+
+    // Загружаем данные матча в форму
+    const playedDate = match.played_at ? new Date(match.played_at) : new Date()
+    setSelectedDate(playedDate)
+    setHour(playedDate.getHours())
+    setMinute(Math.floor(playedDate.getMinutes() / 5) * 5)
+    setTeamAId(match.team_a_id)
+    setTeamBId(match.team_b_id)
+    setScoreA(match.score_a ?? 0)
+    setScoreB(match.score_b ?? 0)
+
+    // Загружаем статистику игроков
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: rawStats } = await (supabase as any)
+      .from('match_player_stats')
+      .select('*')
+      .eq('match_id', match.id)
+    const statsData = rawStats as MatchPlayerStats[] | null
+
+    if (statsData && statsData.length > 0) {
+      setShowStats(true)
+      // Находим игроков обеих команд
+      const teamA = teams.find(t => t.id === match.team_a_id)
+      const teamB = teams.find(t => t.id === match.team_b_id)
+      const newStatsA: Record<string, PlayerStatEntry> = {}
+      const newStatsB: Record<string, PlayerStatEntry> = {}
+
+      if (teamA) {
+        for (const p of teamA.players) {
+          const s = statsData.find(r => r.player_id === p.id)
+          newStatsA[p.id] = s
+            ? { goals: s.goals, own_goals: s.own_goals, yellow_cards: s.yellow_cards, red_cards: s.red_cards }
+            : emptyEntry()
+        }
+      }
+      if (teamB) {
+        for (const p of teamB.players) {
+          const s = statsData.find(r => r.player_id === p.id)
+          newStatsB[p.id] = s
+            ? { goals: s.goals, own_goals: s.own_goals, yellow_cards: s.yellow_cards, red_cards: s.red_cards }
+            : emptyEntry()
+        }
+      }
+      setStatsA(newStatsA)
+      setStatsB(newStatsB)
+    } else {
+      setShowStats(false)
+    }
+
+    setEditingMatch(match)
+    setLoadingEdit(false)
+    // Скролл к форме
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingMatch(null)
+    setScoreA(0); setScoreB(0)
+    setTeamAId(''); setTeamBId('')
+    setShowStats(false)
+    setError(null)
+  }
+
+  const handleDeleteMatch = (match: Match) => {
+    const tA = teams.find(t => t.id === match.team_a_id)
+    const tB = teams.find(t => t.id === match.team_b_id)
+    const label = tA && tB
+      ? `${tA.name} ${match.score_a}:${match.score_b} ${tB.name}`
+      : 'матч'
+    showConfirm({
+      title:       'Удалить матч',
+      message:     `«${label}» будет удалён. Статистика игроков тоже удалится. Отменить нельзя.`,
+      confirmText: 'Удалить',
+      isDangerous: true,
+      onConfirm:   async () => {
+        const { error: err } = await deleteMatch(match.id)
+        if (err) showToast(`Ошибка: ${err}`, 'error')
+        else     showToast('Матч удалён', 'success', 3000)
+      },
+    })
+  }
+
   // ── Guards ───────────────────────────────────────────────────────────────────
   if (!selectedLeague) return <Empty text="Выберите лигу" />
   if (loadingTeams)    return <Spinner className="py-20" />
@@ -235,7 +327,7 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
   const recentPlayed = matches
     .filter(m => m.status === 'played')
     .sort((a, b) => (b.played_at ?? b.created_at).localeCompare(a.played_at ?? a.created_at))
-    .slice(0, 6)
+    .slice(0, 10)
 
   // ── Форматирование ───────────────────────────────────────────────────────────
   const formatDate = (d: Date) =>
@@ -275,11 +367,24 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
       }
     }
 
-    const result = await createPlayedMatch({
-      leagueId: selectedLeague.id,
-      teamAId, teamBId, scoreA, scoreB, playedAt,
-      stats,
-    })
+    let result: { error: string | null }
+
+    if (editingMatch) {
+      // Режим редактирования — обновляем существующий матч
+      result = await saveMatchResult({
+        matchId:  editingMatch.id,
+        scoreA, scoreB,
+        playedAt,
+        stats,
+      })
+    } else {
+      // Режим создания — новый матч
+      result = await createPlayedMatch({
+        leagueId: selectedLeague.id,
+        teamAId, teamBId, scoreA, scoreB, playedAt,
+        stats,
+      })
+    }
 
     setSaving(false)
 
@@ -290,13 +395,16 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
       const winner =
         scoreA > scoreB ? teamA?.name :
         scoreB > scoreA ? teamB?.name : null
-      const msg = winner
-        ? `✅ Победа ${winner}! Счёт ${scoreA}:${scoreB}. Таблица обновлена.`
-        : `✅ Ничья ${scoreA}:${scoreB}. Таблица обновлена.`
+      const msg = editingMatch
+        ? `✅ Матч обновлён. Таблица пересчитана.`
+        : winner
+          ? `✅ Победа ${winner}! Счёт ${scoreA}:${scoreB}. Таблица обновлена.`
+          : `✅ Ничья ${scoreA}:${scoreB}. Таблица обновлена.`
       showToast(msg, 'success', 4000)
 
       setTimeout(() => {
         setSuccess(false)
+        setEditingMatch(null)
         setScoreA(0); setScoreB(0)
         setTeamAId(''); setTeamBId('')
         setShowStats(false)
@@ -319,12 +427,12 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
       {/* Заголовок */}
       <div className="flex items-start gap-3">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{ background: 'rgba(0,117,49,0.20)', color: 'var(--color-brand-primary)' }}>
-          <ClipboardCheck size={20} />
+          style={{ background: editingMatch ? 'rgba(59,130,246,0.20)' : 'rgba(0,117,49,0.20)', color: editingMatch ? '#60a5fa' : 'var(--color-brand-primary)' }}>
+          {editingMatch ? <Edit2 size={20} /> : <ClipboardCheck size={20} />}
         </div>
-        <div>
+        <div className="flex-1">
           <h2 className="text-2xl sm:text-3xl font-extrabold" style={{ color: 'var(--color-brand-text)' }}>
-            Ввод результата матча
+            {editingMatch ? 'Редактирование матча' : 'Ввод результата матча'}
           </h2>
           {(seasonName || leagueName) && (
             <p className="mt-0.5 text-sm" style={{ color: 'var(--color-brand-text-muted)' }}>
@@ -332,6 +440,18 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
             </p>
           )}
         </div>
+        {editingMatch && (
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors"
+            style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--color-brand-text-muted)' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.07)')}
+          >
+            <X size={14} /> Отменить
+          </button>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -587,7 +707,7 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
           ) : saving ? (
             <><Loader2 size={18} className="animate-spin" /> Сохранение...</>
           ) : (
-            'Сохранить результат матча'
+            editingMatch ? 'Сохранить изменения' : 'Сохранить результат матча'
           )}
         </button>
       </form>
@@ -610,9 +730,10 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
               const winA = (m.score_a ?? 0) > (m.score_b ?? 0)
               const winB = (m.score_b ?? 0) > (m.score_a ?? 0)
 
+              const isEditing = editingMatch?.id === m.id
               return (
-                <div key={m.id} className="flex items-center gap-2 py-2 px-3 rounded-xl"
-                  style={{ background: 'rgba(255,255,255,0.025)' }}>
+                <div key={m.id} className="flex items-center gap-2 py-2 px-3 rounded-xl transition-colors"
+                  style={{ background: isEditing ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.025)', border: isEditing ? '1px solid rgba(96,165,250,0.20)' : '1px solid transparent' }}>
                   <span className="label-caps text-[9px] flex-shrink-0 w-14"
                     style={{ color: 'var(--color-brand-outline)' }}>
                     {date}
@@ -634,6 +755,32 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
                       style={{ color: winB ? 'var(--color-brand-primary)' : 'var(--color-brand-text-muted)', fontWeight: winB ? 700 : 400 }}>
                       {tB.name}
                     </span>
+                  </div>
+                  {/* Кнопки редактирования / удаления */}
+                  <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+                    <button
+                      type="button"
+                      disabled={loadingEdit}
+                      onClick={() => handleStartEdit(m)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                      style={{ background: isEditing ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.06)', color: isEditing ? '#60a5fa' : 'var(--color-brand-text-muted)' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = isEditing ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.14)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = isEditing ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.06)')}
+                      title="Редактировать матч"
+                    >
+                      {loadingEdit && editingMatch?.id === m.id ? <Loader2 size={11} className="animate-spin" /> : <Edit2 size={11} />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMatch(m)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                      style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
+                      title="Удалить матч"
+                    >
+                      <Trash2 size={11} />
+                    </button>
                   </div>
                 </div>
               )

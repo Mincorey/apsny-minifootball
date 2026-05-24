@@ -11,12 +11,13 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   type ReactNode,
 } from 'react'
 import { supabase } from '../lib/supabase'
 import { generateUUID } from '../lib/uuid'
 import { seedInitialData } from '../lib/seedData'
-import { useActiveSeason } from '../hooks/useSeasons'
+import { useSeasons } from '../hooks/useSeasons'
 import { useLeagues } from '../hooks/useLeagues'
 import { useTeamsWithPlayers } from '../hooks/useTeams'
 import { useMatches } from '../hooks/useMatches'
@@ -89,6 +90,13 @@ export interface UpdateTeamArgs {
   logoUrl?: string | null
 }
 
+export interface UpdateSeasonArgs {
+  seasonId: string
+  name?: string
+  year?: number
+  status?: 'active' | 'archived'
+}
+
 export interface CreatePlayedMatchArgs {
   leagueId: string
   teamAId:  string
@@ -103,6 +111,7 @@ export interface CreatePlayedMatchArgs {
 
 interface DataContextValue {
   // Данные
+  seasons:        Season[]
   season:         Season | null
   leagues:        League[]
   selectedLeague: League | null
@@ -129,7 +138,8 @@ interface DataContextValue {
   hasError:        boolean
 
   // Выбор лиги
-  selectLeague: (league: League) => void
+  selectLeague:  (league: League) => void
+  selectSeason:  (season: Season) => void
 
   // Мутации (только для admin)
   saveMatchResult:  (args: SaveMatchResultArgs) => Promise<{ error: string | null }>
@@ -149,8 +159,9 @@ interface DataContextValue {
   deletePlayer: (playerId: string) => Promise<{ error: string | null }>
 
   // UPDATE операции
-  updateMatch:  (args: UpdateMatchArgs) => Promise<{ error: string | null }>
-  updateTeam:   (args: UpdateTeamArgs) => Promise<{ error: string | null }>
+  updateMatch:   (args: UpdateMatchArgs)  => Promise<{ error: string | null }>
+  updateTeam:    (args: UpdateTeamArgs)   => Promise<{ error: string | null }>
+  updateSeason:  (args: UpdateSeasonArgs) => Promise<{ error: string | null }>
 
   // Создание уже сыгранного матча (без предварительного планирования)
   createPlayedMatch: (args: CreatePlayedMatchArgs) => Promise<{ error: string | null }>
@@ -186,8 +197,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     initializeSeed()
   }, [])
 
-  // Сезон
-  const { season, loading: loadingSeasons, error: errorSeasons, refetch: refetchSeasons } = useActiveSeason()
+  // Сезоны
+  const { seasons, loading: loadingSeasons, error: errorSeasons, refetch: refetchSeasons } = useSeasons()
+
+  // Выбранный сезон (по умолчанию — активный или первый)
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null)
+  const season = useMemo(() => {
+    if (selectedSeasonId) return seasons.find(s => s.id === selectedSeasonId) ?? null
+    return seasons.find(s => s.status === 'active') ?? seasons[0] ?? null
+  }, [seasons, selectedSeasonId])
 
   // Лиги
   const { leagues, loading: loadingLeagues, error: errorLeagues, refetch: refetchLeagues } = useLeagues(season?.id ?? null)
@@ -199,6 +217,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const selectLeague = useCallback((league: League) => {
     setSelectedLeague(league)
+  }, [])
+
+  const selectSeason = useCallback((s: Season) => {
+    setSelectedSeasonId(s.id)
+    setSelectedLeague(null) // сброс лиги при смене сезона
   }, [])
 
   // Данные выбранной лиги
@@ -316,6 +339,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null }
   }, [refetchMatches])
 
+  const updateSeason = useCallback(async ({ seasonId, name, year, status }: UpdateSeasonArgs) => {
+    const update: Record<string, unknown> = {}
+    if (name   !== undefined) update.name   = name
+    if (year   !== undefined) update.year   = year
+    if (status !== undefined) {
+      // При активации этого сезона — архивируем все остальные
+      if (status === 'active') {
+        await supabase.from('seasons').update({ status: 'archived' }).neq('id', seasonId)
+      }
+      update.status = status
+    }
+    const { error } = await supabase.from('seasons').update(update).eq('id', seasonId)
+    if (!error) refetchSeasons()
+    return { error: error?.message ?? null }
+  }, [refetchSeasons])
+
   /**
    * Создаёт матч напрямую со статусом 'played'.
    * Номер тура определяется автоматически (max + 1 по лиге).
@@ -369,18 +408,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   return (
     <DataContext.Provider value={{
-      season, leagues, selectedLeague: currentLeague,
+      seasons, season, leagues, selectedLeague: currentLeague,
       teams, matches, standings, scorers,
       loadingSeasons, loadingLeagues, loadingTeams,
       loadingMatches, loadingStandings, loadingScorers,
       errorSeasons, errorLeagues, errorTeams,
       errorMatches, errorStandings, errorScorers,
       hasError,
-      selectLeague,
+      selectLeague, selectSeason,
       saveMatchResult,
       createSeason, createLeague, createTeam, createMatch, createPlayer,
       deleteMatch, deleteTeam, deleteLeague, deleteSeason, deletePlayer,
-      updateMatch, updateTeam, createPlayedMatch,
+      updateMatch, updateTeam, updateSeason, createPlayedMatch,
       refetchTeams, refetchMatches, refetchStandings, refetchScorers,
       refetchSeasons, refetchLeagues,
     }}>

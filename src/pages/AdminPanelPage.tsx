@@ -10,7 +10,7 @@
 import { useState, useRef } from 'react'
 import {
   Trophy, Users, ListOrdered, Plus, Trash2,
-  ChevronDown, ChevronUp, Loader2, Check, Upload, Edit2, X,
+  ChevronDown, ChevronUp, Loader2, Check, Upload, Edit2, X, Calendar, Archive, Star,
 } from 'lucide-react'
 import { uploadAndCompressImage } from '../lib/imageUtils'
 import { generateUUID } from '../lib/uuid'
@@ -91,6 +91,276 @@ function Section({
           {children}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Секция 0: Сезоны
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SeasonsSection() {
+  const {
+    seasons, season: currentSeason,
+    createSeason, updateSeason, deleteSeason, selectSeason, refetchSeasons,
+    loadingSeasons,
+  } = useData()
+  const { showToast, showConfirm } = useDialogs()
+
+  const [newName,    setNewName]    = useState('')
+  const [newYear,    setNewYear]    = useState(new Date().getFullYear())
+  const [saving,     setSaving]     = useState(false)
+  const [success,    setSuccess]    = useState(false)
+  const [editingId,  setEditingId]  = useState<string | null>(null)
+  const [editName,   setEditName]   = useState('')
+
+  const handleCreate = async () => {
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    setSaving(true)
+    const { error } = await createSeason({ name: trimmed, year: newYear })
+    setSaving(false)
+    if (error) {
+      showToast(`Ошибка: ${error}`, 'error')
+    } else {
+      setSuccess(true)
+      setNewName('')
+      showToast(`Сезон «${trimmed}» создан`, 'success', 3000)
+      setTimeout(() => setSuccess(false), 2000)
+    }
+  }
+
+  const handleStartEdit = (id: string, name: string) => {
+    setEditingId(id)
+    setEditName(name)
+  }
+
+  const handleSaveEdit = async (id: string) => {
+    const trimmed = editName.trim()
+    if (!trimmed) return
+    const { error } = await updateSeason({ seasonId: id, name: trimmed })
+    if (error) showToast(`Ошибка: ${error}`, 'error')
+    else { setEditingId(null); showToast('Сезон обновлён', 'success', 2000) }
+  }
+
+  const handleSetActive = (id: string, name: string) => {
+    showConfirm({
+      title:       'Сделать текущим',
+      message:     `Сезон «${name}» станет активным. Остальные сезоны будут переведены в архив.`,
+      confirmText: 'Подтвердить',
+      isDangerous: false,
+      onConfirm: async () => {
+        const { error } = await updateSeason({ seasonId: id, status: 'active' })
+        if (error) showToast(`Ошибка: ${error}`, 'error')
+        else {
+          selectSeason(seasons.find(s => s.id === id)!)
+          showToast(`Сезон «${name}» теперь активный`, 'success', 3000)
+          refetchSeasons()
+        }
+      },
+    })
+  }
+
+  const handleArchive = (id: string, name: string) => {
+    showConfirm({
+      title:       'Архивировать сезон',
+      message:     `Сезон «${name}» будет переведён в архив. Данные сохранятся.`,
+      confirmText: 'Архивировать',
+      isDangerous: false,
+      onConfirm: async () => {
+        const { error } = await updateSeason({ seasonId: id, status: 'archived' })
+        if (error) showToast(`Ошибка: ${error}`, 'error')
+        else showToast(`Сезон «${name}» перемещён в архив`, 'success', 3000)
+      },
+    })
+  }
+
+  const handleDelete = (id: string, name: string) => {
+    showConfirm({
+      title:       'Удалить сезон',
+      message:     `«${name}» будет удалён ВМЕСТЕ со всеми лигами, командами и матчами. Отменить нельзя.`,
+      confirmText: 'Удалить',
+      isDangerous: true,
+      onConfirm: async () => {
+        const { error } = await deleteSeason(id)
+        if (error) showToast(`Ошибка: ${error}`, 'error')
+        else showToast(`Сезон «${name}» удалён`, 'success', 3000)
+      },
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* Список сезонов */}
+      {loadingSeasons ? (
+        <Spinner className="py-6" />
+      ) : seasons.length === 0 ? (
+        <p className="text-xs text-center py-3" style={{ color: 'var(--color-brand-outline)' }}>
+          Нет сезонов
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {seasons.map(s => {
+            const isActive  = s.status === 'active'
+            const isCurrent = currentSeason?.id === s.id
+            return (
+              <div
+                key={s.id}
+                className="rounded-xl px-3 py-2.5"
+                style={{
+                  background: isCurrent ? 'rgba(0,117,49,0.10)' : 'rgba(255,255,255,0.025)',
+                  border: isCurrent ? '1px solid rgba(122,219,138,0.20)' : '1px solid transparent',
+                }}
+              >
+                {editingId === s.id ? (
+                  /* Режим редактирования имени */
+                  <div className="flex items-center gap-2">
+                    <input
+                      autoFocus
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(s.id); if (e.key === 'Escape') setEditingId(null) }}
+                      style={{ ...inputStyle, flex: 1 }}
+                      onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
+                      onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveEdit(s.id)}
+                      className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                      style={{ background: 'var(--color-brand-accent)', color: '#fff' }}
+                    >
+                      <Check size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(null)}
+                      className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                      style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--color-brand-text-muted)' }}
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                ) : (
+                  /* Обычный вид */
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <Calendar size={14} style={{ color: isActive ? 'var(--color-brand-primary)' : 'var(--color-brand-outline)', flexShrink: 0 }} />
+                    <span className="flex-1 text-sm font-medium truncate" style={{ color: 'var(--color-brand-text)' }}>
+                      {s.name}
+                    </span>
+                    {/* Статус-бейдж */}
+                    <span
+                      className="label-caps text-[9px] px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={isActive
+                        ? { background: 'rgba(0,117,49,0.22)', color: 'var(--color-brand-primary)' }
+                        : { background: 'rgba(255,255,255,0.08)', color: 'var(--color-brand-outline)' }
+                      }
+                    >
+                      {isActive ? '● Активный' : 'Архив'}
+                    </span>
+                    {/* Кнопки действий */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* Переименовать */}
+                      <button
+                        type="button"
+                        onClick={() => handleStartEdit(s.id, s.name)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                        style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--color-brand-text-muted)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                        title="Переименовать"
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      {/* Сделать активным / В архив */}
+                      {isActive ? (
+                        <button
+                          type="button"
+                          onClick={() => handleArchive(s.id, s.name)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--color-brand-text-muted)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
+                          title="Перевести в архив"
+                        >
+                          <Archive size={12} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleSetActive(s.id, s.name)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ background: 'rgba(0,117,49,0.12)', color: 'var(--color-brand-primary)' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,117,49,0.25)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(0,117,49,0.12)')}
+                          title="Сделать активным"
+                        >
+                          <Star size={12} />
+                        </button>
+                      )}
+                      {/* Удалить */}
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(s.id, s.name)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                        style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
+                        title="Удалить сезон"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Форма создания нового сезона */}
+      <div className="space-y-2 pt-1">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleCreate()}
+            placeholder="Название сезона (напр. 2026/2027)…"
+            style={{ ...inputStyle, flex: 1 }}
+            onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
+            onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
+          />
+          <input
+            type="number"
+            value={newYear}
+            onChange={e => setNewYear(parseInt(e.target.value) || new Date().getFullYear())}
+            min={2000} max={2100}
+            placeholder="Год"
+            style={{ ...inputStyle, width: '5rem', flex: 'none' }}
+            onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
+            onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
+          />
+        </div>
+        <button
+          type="button"
+          disabled={saving || !newName.trim()}
+          onClick={handleCreate}
+          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
+          style={success
+            ? { background: 'rgba(122,219,138,0.15)', color: 'var(--color-brand-primary)', border: '1px solid rgba(122,219,138,0.25)' }
+            : { background: 'var(--color-brand-accent)', color: '#fff' }
+          }
+        >
+          {saving
+            ? <Loader2 size={15} className="animate-spin" />
+            : success
+              ? <><Check size={15} /> Сезон создан</>
+              : <><Plus size={15} /> Создать сезон</>}
+        </button>
+      </div>
     </div>
   )
 }
@@ -916,11 +1186,7 @@ function ToursSection() {
 // Главный компонент
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface Props {
-  seasonName?: string
-}
-
-export function AdminPanelPage({ seasonName }: Props) {
+export function AdminPanelPage() {
   const { season } = useData()
 
   return (
@@ -941,15 +1207,15 @@ export function AdminPanelPage({ seasonName }: Props) {
           >
             Панель администратора
           </h2>
-          {seasonName && (
-            <p className="mt-0.5 text-sm" style={{ color: 'var(--color-brand-text-muted)' }}>
-              {seasonName}
-            </p>
-          )}
+
         </div>
       </div>
 
       {/* Секции-аккордеоны */}
+      <Section icon={<Calendar size={16} />} title="Сезоны">
+        <SeasonsSection />
+      </Section>
+
       <Section icon={<Trophy size={16} />} title="Лиги" defaultOpen={true}>
         <LeaguesSection />
       </Section>
