@@ -1,6 +1,11 @@
-// ─── Cache name — bump this string after each deploy ───────────────────────
-const CACHE_NAME = 'apsny-mfl-v3';
+const CACHE_NAME = 'apsny-mfl-v4';
 
-// ─── Install: skip waiting, cache only the shell ───────────────────────────
+// ─── Install: skip waiting immediately ─────────────────────────────────────
 self.addEventListener('install', (event) => {
-  self.skipWaiting(); // activate immediately, don't wait for old ta
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(['/']))
+  );
+});
+
+// ─── Activate: delete old caches, claim clients, then FOR
