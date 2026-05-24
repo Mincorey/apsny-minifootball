@@ -169,7 +169,7 @@ export default function AppV2() {
           )}
 
           {/* ROW 3: Навигационные вкладки ───────────────────────────────────── */}
-          <div className="flex gap-0.5 sm:gap-1 sm:overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+          <div className="flex gap-0.5 sm:gap-1 sm:justify-center sm:overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
             {visibleTabs.map(tab => {
               const Icon = tab.icon
               const active = activeTab === tab.id

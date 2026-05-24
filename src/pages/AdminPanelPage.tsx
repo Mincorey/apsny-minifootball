@@ -10,7 +10,7 @@
 import { useState, useRef } from 'react'
 import {
   Trophy, Users, ListOrdered, Plus, Trash2,
-  ChevronDown, ChevronUp, Loader2, Check, Upload,
+  ChevronDown, ChevronUp, Loader2, Check, Upload, Edit2, X,
 } from 'lucide-react'
 import { uploadAndCompressImage } from '../lib/imageUtils'
 import { useData } from '../context/DataContext'
@@ -226,34 +226,86 @@ function TeamsSection() {
   const {
     leagues, selectedLeague, selectLeague,
     teams, loadingTeams,
-    createTeam, deleteTeam,
+    createTeam, deleteTeam, updateTeam,
   } = useData()
   const { showToast, showConfirm } = useDialogs()
 
+  // ── Создание новой команды ───────────────────────────────────────────────────
   const [name,          setName]          = useState('')
   const [color,         setColor]         = useState(TEAM_COLORS[0])
   const [logoUrl,       setLogoUrl]       = useState('')
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [saving,        setSaving]        = useState(false)
   const [success,       setSuccess]       = useState(false)
-
   const logoInputRef = useRef<HTMLInputElement>(null)
+
+  // ── Редактирование существующей команды ─────────────────────────────────────
+  const [editingTeamId,     setEditingTeamId]     = useState<string | null>(null)
+  const [editName,          setEditName]          = useState('')
+  const [editColor,         setEditColor]         = useState(TEAM_COLORS[0])
+  const [editLogoUrl,       setEditLogoUrl]       = useState('')
+  const [editUploadingLogo, setEditUploadingLogo] = useState(false)
+  const [editSaving,        setEditSaving]        = useState(false)
+  const editLogoInputRef = useRef<HTMLInputElement>(null)
 
   const leagueOptions = leagues.map(l => ({ value: l.id, label: l.name }))
 
+  // ── Загрузка логотипа (создание) ─────────────────────────────────────────
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.currentTarget.files?.[0]
     if (!file) return
     setUploadingLogo(true)
     const fileName = `team-${crypto.randomUUID()}-${Date.now()}.jpg`
     const result = await uploadAndCompressImage('team-logos', file, 'teams', fileName)
-    if (result) {
-      setLogoUrl(result.url)
-    } else {
-      showToast('Ошибка при загрузке логотипа', 'error')
-    }
+    if (result) setLogoUrl(result.url)
+    else showToast('Ошибка при загрузке логотипа', 'error')
     setUploadingLogo(false)
     e.currentTarget.value = ''
+  }
+
+  // ── Загрузка логотипа (редактирование) ───────────────────────────────────
+  const handleEditLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0]
+    if (!file) return
+    setEditUploadingLogo(true)
+    const fileName = `team-${crypto.randomUUID()}-${Date.now()}.jpg`
+    const result = await uploadAndCompressImage('team-logos', file, 'teams', fileName)
+    if (result) setEditLogoUrl(result.url)
+    else showToast('Ошибка при загрузке логотипа', 'error')
+    setEditUploadingLogo(false)
+    e.currentTarget.value = ''
+  }
+
+  // ── Начать редактирование команды ────────────────────────────────────────
+  const handleStartEdit = (t: typeof teams[0]) => {
+    setEditingTeamId(t.id)
+    setEditName(t.name)
+    setEditColor(t.color)
+    setEditLogoUrl(t.logo_url || '')
+  }
+
+  const handleCancelEdit = () => {
+    setEditingTeamId(null)
+    setEditName('')
+    setEditColor(TEAM_COLORS[0])
+    setEditLogoUrl('')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingTeamId || !editName.trim()) return
+    setEditSaving(true)
+    const { error } = await updateTeam({
+      teamId:  editingTeamId,
+      name:    editName.trim(),
+      color:   editColor,
+      logoUrl: editLogoUrl || null,
+    })
+    setEditSaving(false)
+    if (error) showToast(`Ошибка: ${error}`, 'error')
+    else {
+      showToast('Команда обновлена', 'success', 3000)
+      handleCancelEdit()
+    }
   }
 
   const handleCreate = async () => {
@@ -316,37 +368,182 @@ function TeamsSection() {
           В лиге нет команд
         </p>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {teams.map(t => (
-            <div
-              key={t.id}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.025)' }}
-            >
-              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
-              <span className="flex-1 text-sm font-medium" style={{ color: 'var(--color-brand-text)' }}>
-                {t.name}
-              </span>
-              <span className="label-caps text-[9px]" style={{ color: 'var(--color-brand-outline)' }}>
-                {t.players?.length ?? 0} игр.
-              </span>
-              <button
-                type="button"
-                onClick={() => handleDelete(t.id, t.name)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
-                title="Удалить команду"
+            <div key={t.id}>
+              {/* Строка команды */}
+              <div
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
+                style={{
+                  background: editingTeamId === t.id
+                    ? 'rgba(122,219,138,0.07)'
+                    : 'rgba(255,255,255,0.025)',
+                  border: editingTeamId === t.id
+                    ? '1px solid rgba(122,219,138,0.20)'
+                    : '1px solid transparent',
+                }}
               >
-                <Trash2 size={13} />
-              </button>
+                {t.logo_url ? (
+                  <img src={t.logo_url} alt={t.name}
+                    className="w-7 h-7 rounded-full object-cover flex-shrink-0"
+                    style={{ border: `2px solid ${t.color}` }}
+                  />
+                ) : (
+                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
+                )}
+                <span className="flex-1 text-sm font-medium truncate" style={{ color: 'var(--color-brand-text)' }}>
+                  {t.name}
+                </span>
+                <span className="label-caps text-[9px] flex-shrink-0" style={{ color: 'var(--color-brand-outline)' }}>
+                  {t.players?.length ?? 0} игр.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => editingTeamId === t.id ? handleCancelEdit() : handleStartEdit(t)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
+                  style={editingTeamId === t.id
+                    ? { background: 'rgba(122,219,138,0.18)', color: 'var(--color-brand-primary)' }
+                    : { background: 'rgba(96,165,250,0.10)', color: '#60a5fa' }
+                  }
+                  onMouseEnter={e => {
+                    if (editingTeamId !== t.id)
+                      e.currentTarget.style.background = 'rgba(96,165,250,0.22)'
+                  }}
+                  onMouseLeave={e => {
+                    if (editingTeamId !== t.id)
+                      e.currentTarget.style.background = 'rgba(96,165,250,0.10)'
+                  }}
+                  title={editingTeamId === t.id ? 'Закрыть' : 'Редактировать команду'}
+                >
+                  {editingTeamId === t.id ? <X size={13} /> : <Edit2 size={13} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(t.id, t.name)}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
+                  style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
+                  title="Удалить команду"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+
+              {/* Инлайн-форма редактирования */}
+              {editingTeamId === t.id && (
+                <div
+                  className="mt-1 mb-2 p-4 rounded-xl space-y-3"
+                  style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(122,219,138,0.15)' }}
+                >
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSaveEdit()}
+                    placeholder="Название команды…"
+                    style={inputStyle}
+                    onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
+                    onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
+                  />
+
+                  <div>
+                    <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>Цвет команды</p>
+                    <div className="flex flex-wrap gap-2">
+                      {TEAM_COLORS.map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setEditColor(c)}
+                          className="w-8 h-8 rounded-lg transition-all"
+                          style={{
+                            backgroundColor: c,
+                            outline: editColor === c ? `2px solid ${c}` : 'none',
+                            outlineOffset: '2px',
+                            transform: editColor === c ? 'scale(1.15)' : 'scale(1)',
+                            boxShadow: editColor === c ? `0 0 10px ${c}66` : 'none',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>Логотип (опционально)</p>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+                        style={{ background: 'rgba(255,255,255,0.05)', border: `2px solid ${editLogoUrl ? editColor : 'rgba(255,255,255,0.10)'}` }}
+                      >
+                        {editLogoUrl ? (
+                          <img src={editLogoUrl} alt="Logo" className="w-full h-full object-cover rounded-full" />
+                        ) : (
+                          <Trophy size={22} style={{ color: 'var(--color-brand-outline)' }} />
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => editLogoInputRef.current?.click()}
+                        disabled={editUploadingLogo}
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                        style={{ background: 'rgba(52,152,219,0.10)', color: '#60a5fa', border: '1px solid rgba(52,152,219,0.20)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(52,152,219,0.20)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(52,152,219,0.10)')}
+                      >
+                        {editUploadingLogo ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                        {editUploadingLogo ? 'Загрузка...' : editLogoUrl ? 'Изменить' : 'Загрузить логотип'}
+                      </button>
+                      {editLogoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setEditLogoUrl('')}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
+                          style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
+                          title="Удалить логотип"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      ref={editLogoInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditLogoUpload}
+                      className="hidden"
+                    />
+                  </div>
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
+                      style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--color-brand-text-muted)', border: '1px solid rgba(255,255,255,0.10)' }}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      disabled={editSaving || !editName.trim()}
+                      onClick={handleSaveEdit}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-40"
+                      style={{ background: 'var(--color-brand-accent)', color: '#fff' }}
+                    >
+                      {editSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                      {editSaving ? 'Сохранение...' : 'Сохранить'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* Форма создания */}
+      {/* Форма создания новой команды */}
       {selectedLeague && (
         <div className="space-y-3">
           <div className="flex gap-2">
@@ -388,15 +585,15 @@ function TeamsSection() {
           <div>
             <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>Логотип команды (опционально)</p>
             <div className="flex items-center gap-3">
-              {/* Превью логотипа */}
+              {/* Превью логотипа — увеличенный */}
               <div
-                className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
+                className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
                 style={{ background: 'rgba(255,255,255,0.05)', border: `2px solid ${logoUrl ? color : 'rgba(255,255,255,0.10)'}` }}
               >
                 {logoUrl ? (
                   <img src={logoUrl} alt="Logo preview" className="w-full h-full object-cover rounded-full" />
                 ) : (
-                  <Trophy size={18} style={{ color: 'var(--color-brand-outline)' }} />
+                  <Trophy size={22} style={{ color: 'var(--color-brand-outline)' }} />
                 )}
               </div>
               {/* Кнопка загрузки */}

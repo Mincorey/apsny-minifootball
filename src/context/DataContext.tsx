@@ -82,6 +82,13 @@ export interface UpdateMatchArgs {
   scheduledAt?: string | null
 }
 
+export interface UpdateTeamArgs {
+  teamId: string
+  name?: string
+  color?: string
+  logoUrl?: string | null
+}
+
 export interface CreatePlayedMatchArgs {
   leagueId: string
   teamAId:  string
@@ -143,6 +150,7 @@ interface DataContextValue {
 
   // UPDATE операции
   updateMatch:  (args: UpdateMatchArgs) => Promise<{ error: string | null }>
+  updateTeam:   (args: UpdateTeamArgs) => Promise<{ error: string | null }>
 
   // Создание уже сыгранного матча (без предварительного планирования)
   createPlayedMatch: (args: CreatePlayedMatchArgs) => Promise<{ error: string | null }>
@@ -288,6 +296,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null }
   }, [refetchTeams])
 
+  const updateTeam = useCallback(async ({ teamId, name, color, logoUrl }: UpdateTeamArgs) => {
+    const update: Record<string, unknown> = {}
+    if (name    !== undefined) update.name     = name
+    if (color   !== undefined) update.color    = color
+    if (logoUrl !== undefined) update.logo_url = logoUrl
+    const { error } = await supabase.from('teams').update(update).eq('id', teamId)
+    if (!error) refetchTeams()
+    return { error: error?.message ?? null }
+  }, [refetchTeams])
+
   const updateMatch = useCallback(async ({ matchId, tour, status, scheduledAt }: UpdateMatchArgs) => {
     const update: Record<string, unknown> = {}
     if (tour        !== undefined) update.tour         = tour
@@ -362,7 +380,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       saveMatchResult,
       createSeason, createLeague, createTeam, createMatch, createPlayer,
       deleteMatch, deleteTeam, deleteLeague, deleteSeason, deletePlayer,
-      updateMatch, createPlayedMatch,
+      updateMatch, updateTeam, createPlayedMatch,
       refetchTeams, refetchMatches, refetchStandings, refetchScorers,
       refetchSeasons, refetchLeagues,
     }}>

@@ -306,7 +306,7 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
             </label>
             <div className="flex items-center gap-4">
               {/* Превью логотипа */}
-              <div className="w-32 h-32 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center flex-shrink-0">
+              <div className="w-32 h-32 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center flex-shrink-0 overflow-hidden">
                 {teamLogoUrl ? (
                   <img
                     src={teamLogoUrl}
@@ -318,19 +318,30 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
                 )}
               </div>
 
-              {/* Загрузка */}
-              <button
-                onClick={() => logoInputRef.current?.click()}
-                disabled={uploadingLogo}
-                className="flex-1 px-4 py-3 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {uploadingLogo ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Upload size={16} />
+              {/* Кнопки */}
+              <div className="flex-1 flex flex-col gap-2">
+                <button
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={uploadingLogo}
+                  className="w-full px-4 py-3 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-lg transition flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {uploadingLogo ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Upload size={16} />
+                  )}
+                  {uploadingLogo ? 'Загрузка...' : teamLogoUrl ? 'Изменить логотип' : 'Загрузить логотип'}
+                </button>
+                {teamLogoUrl && (
+                  <button
+                    onClick={() => setTeamLogoUrl('')}
+                    className="w-full px-4 py-2 bg-red-600/15 hover:bg-red-600/30 text-red-400 rounded-lg transition flex items-center justify-center gap-2 text-sm"
+                  >
+                    <Trash2 size={14} />
+                    Удалить логотип
+                  </button>
                 )}
-                {uploadingLogo ? 'Загрузка...' : 'Загрузить логотип'}
-              </button>
+              </div>
 
               <input
                 ref={logoInputRef}
@@ -429,8 +440,17 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
                     disabled={uploadingPhoto}
                     className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-lg text-xs transition disabled:opacity-50"
                   >
-                    {uploadingPhoto ? 'Загрузка...' : 'Фото'}
+                    {uploadingPhoto ? 'Загрузка...' : editingPlayerPhotoUrl ? 'Изменить фото' : 'Фото'}
                   </button>
+                  {editingPlayerPhotoUrl && (
+                    <button
+                      onClick={() => setEditingPlayerPhotoUrl('')}
+                      className="p-2 bg-red-600/15 hover:bg-red-600/30 text-red-400 rounded-lg text-xs transition"
+                      title="Удалить фото"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </div>
 
                 {/* Поля редактирования */}
@@ -489,8 +509,17 @@ export function TeamEditModal({ team, onClose, onSave, onRefetch }: Props) {
                       disabled={uploadingPhoto}
                       className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-lg text-xs transition disabled:opacity-50"
                     >
-                      {uploadingPhoto ? 'Загрузка...' : 'Загрузить фото'}
+                      {uploadingPhoto ? 'Загрузка...' : newPlayerPhotoUrl ? 'Изменить фото' : 'Загрузить фото'}
                     </button>
+                    {newPlayerPhotoUrl && (
+                      <button
+                        onClick={() => setNewPlayerPhotoUrl('')}
+                        className="p-2 bg-red-600/15 hover:bg-red-600/30 text-red-400 rounded-lg text-xs transition"
+                        title="Удалить фото"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
 
                   {/* Имя */}
