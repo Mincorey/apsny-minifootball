@@ -99,53 +99,49 @@ export default function AppV2() {
       <header className="glass-nav sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
 
-          {/* ROW 1: Название + Admin badge ─────────────────────────────────── */}
-          <div className="flex items-center justify-between gap-3">
-
-            {/* Логотип + название (кликабельно для входа в админку) */}
+          {/* ROW 1: Логотип + Название (+ Admin badge под названием) ──────── */}
+          <div
+            className="flex items-start gap-2.5 cursor-pointer select-none"
+            onClick={handleHeaderClick}
+            title="5 кликов для входа администратора"
+          >
             <div
-              className="flex items-center gap-2.5 cursor-pointer select-none min-w-0"
-              onClick={handleHeaderClick}
-              title="5 кликов для входа администратора"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+              style={{ background: 'var(--color-brand-accent)', boxShadow: '0 0 12px rgba(0,117,49,0.40)' }}
             >
-              <div
-                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'var(--color-brand-accent)', boxShadow: '0 0 12px rgba(0,117,49,0.40)' }}
-              >
-                <Trophy size={16} className="text-white" />
-              </div>
-              <div className="min-w-0">
-                <h1
-                  className="text-sm sm:text-base font-bold leading-tight hover:text-green-400 transition-colors"
-                  style={{ color: 'var(--color-brand-text)' }}
-                >
-                  Чемпионат Абхазии по мини-футболу
-                </h1>
-                <p className="label-caps text-[10px]" style={{ color: 'var(--color-brand-text-muted)' }}>
-                  {isLoading ? '...' : season?.name ?? '2026'}
-                </p>
-              </div>
+              <Trophy size={16} className="text-white" />
             </div>
+            <div className="min-w-0">
+              <h1
+                className="text-sm sm:text-base font-bold leading-tight hover:text-green-400 transition-colors"
+                style={{ color: 'var(--color-brand-text)' }}
+              >
+                Чемпионат Абхазии по мини-футболу
+              </h1>
 
-            {/* Admin badge + выход */}
-            {isAdmin && (
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <span
-                  className="label-caps text-[10px] px-2.5 py-1 rounded-lg"
-                  style={{ background: 'rgba(0,117,49,0.15)', color: 'var(--color-brand-primary)' }}
+              {/* Admin badge + кнопка выхода — под названием */}
+              {isAdmin && (
+                <div
+                  className="flex items-center gap-2 mt-1.5"
+                  onClick={e => e.stopPropagation()}
                 >
-                  🔐 Админ
-                </span>
-                <button
-                  onClick={() => { localStorage.removeItem('adminSessionToken'); setIsAdminMode(false) }}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-xs transition-colors"
-                  style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}
-                  title="Выйти из режима администратора"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
+                  <span
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                    style={{ background: 'rgba(0,117,49,0.18)', color: 'var(--color-brand-primary)' }}
+                  >
+                    🔐 Админ
+                  </span>
+                  <button
+                    onClick={() => { localStorage.removeItem('adminSessionToken'); setIsAdminMode(false) }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                    style={{ background: 'rgba(239,68,68,0.12)', color: '#f87171' }}
+                    title="Выйти из режима администратора"
+                  >
+                    ✕ Выйти
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ROW 2: Кнопки лиг (по центру) ─────────────────────────────────── */}
