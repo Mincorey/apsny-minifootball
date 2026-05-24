@@ -67,6 +67,7 @@ export interface CreateMatchArgs {
   teamBId: string
   tour: number
   scheduledAt?: string | null
+  venue?: string | null
 }
 
 export interface CreatePlayerArgs {
@@ -81,6 +82,9 @@ export interface UpdateMatchArgs {
   tour?: number
   status?: 'scheduled' | 'played' | 'cancelled'
   scheduledAt?: string | null
+  teamAId?: string
+  teamBId?: string
+  venue?: string | null
 }
 
 export interface UpdateTeamArgs {
@@ -277,8 +281,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null }
   }, [refetchTeams])
 
-  const createMatch = useCallback(async ({ leagueId, teamAId, teamBId, tour, scheduledAt }: CreateMatchArgs) => {
-    const { error } = await supabase.from('matches').insert({ id: generateUUID(), league_id: leagueId, team_a_id: teamAId, team_b_id: teamBId, tour, status: 'scheduled', scheduled_at: scheduledAt ?? null })
+  const createMatch = useCallback(async ({ leagueId, teamAId, teamBId, tour, scheduledAt, venue }: CreateMatchArgs) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).from('matches').insert({ id: generateUUID(), league_id: leagueId, team_a_id: teamAId, team_b_id: teamBId, tour, status: 'scheduled', scheduled_at: scheduledAt ?? null, venue: venue ?? null })
     if (!error) refetchMatches()
     return { error: error?.message ?? null }
   }, [refetchMatches])
@@ -329,12 +334,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return { error: error?.message ?? null }
   }, [refetchTeams])
 
-  const updateMatch = useCallback(async ({ matchId, tour, status, scheduledAt }: UpdateMatchArgs) => {
+  const updateMatch = useCallback(async ({ matchId, tour, status, scheduledAt, teamAId, teamBId, venue }: UpdateMatchArgs) => {
     const update: Record<string, unknown> = {}
     if (tour        !== undefined) update.tour         = tour
     if (status      !== undefined) update.status       = status
     if (scheduledAt !== undefined) update.scheduled_at = scheduledAt
-    const { error } = await supabase.from('matches').update(update).eq('id', matchId)
+    if (teamAId     !== undefined) update.team_a_id    = teamAId
+    if (teamBId     !== undefined) update.team_b_id    = teamBId
+    if (venue       !== undefined) update.venue        = venue
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).from('matches').update(update).eq('id', matchId)
     if (!error) refetchMatches()
     return { error: error?.message ?? null }
   }, [refetchMatches])

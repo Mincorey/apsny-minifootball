@@ -265,12 +265,8 @@ export default function AppV2() {
             {activeTab === 'scorers'  && <ScorersPage   scorers={scorers}     loading={loadingScorers}   error={errorScorers} />}
             {activeTab === 'schedule' && (
               <SchedulePage
-                matches={matches}
-                teams={teams}
-                loading={loadingMatches || loadingTeams}
                 isAdmin={isAdmin}
                 onEnterResult={setResultMatch}
-                error={errorMatches || errorTeams}
               />
             )}
             {activeTab === 'tours'       && <ToursPage      matches={matches} teams={teams} loading={loadingMatches || loadingTeams} error={errorMatches || errorTeams} />}
