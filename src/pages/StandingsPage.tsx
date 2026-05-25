@@ -65,7 +65,7 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
             WebkitOverflowScrolling: 'touch',
           } as React.CSSProperties}
         >
-          <table className="w-full text-sm" style={{ minWidth: '560px', borderCollapse: 'collapse' }}>
+          <table className="w-full text-sm" style={{ minWidth: '500px', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
 
@@ -87,7 +87,7 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
                     color: 'var(--color-brand-outline)',
                     position: 'sticky', left: `${RANK_W}px`, zIndex: 3,
                     background: STICKY_BG,
-                    minWidth: '110px',
+                    width: '150px',
                   }}
                 >Команда</th>
 
@@ -131,8 +131,8 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
                     style={{
                       position: 'sticky', left: `${RANK_W}px`, zIndex: 1,
                       background: STICKY_BG,
-                      minWidth: '110px',
-                      maxWidth: '150px',
+                      width: '150px',
+                      overflow: 'hidden',
                     }}
                   >
                     <div className="flex items-center gap-1.5">
