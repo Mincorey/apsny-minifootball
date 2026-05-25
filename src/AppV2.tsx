@@ -115,10 +115,10 @@ export default function AppV2() {
               title="5 кликов для входа администратора"
             >
               <div
-                className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
-                style={{ background: 'var(--color-brand-accent)', boxShadow: '0 0 18px rgba(0,117,49,0.50)' }}
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex-shrink-0 overflow-hidden"
+                style={{ boxShadow: '0 0 18px rgba(0,117,49,0.40)' }}
               >
-                <Trophy size={26} className="text-white" />
+                <img src="/img/icon.png" alt="APSNY MFL" className="w-full h-full object-cover" />
               </div>
               <h1
                 className="text-lg sm:text-xl font-extrabold leading-snug hover:text-green-400 transition-colors text-center"
