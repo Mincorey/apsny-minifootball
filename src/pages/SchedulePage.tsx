@@ -15,6 +15,8 @@ import { useDialogs } from '../components/DialogsContext'
 import { Spinner } from '../components/Spinner'
 import { Empty } from '../components/ui/Empty'
 import { TeamLabel } from '../components/ui/TeamLabel'
+import { CustomSelect } from '../components/CustomSelect'
+import type { SelectOption } from '../components/CustomSelect'
 import type { Match } from '../types/database'
 
 type MatchV = Match & { venue?: string | null }
@@ -71,6 +73,9 @@ function CreateForm({ leagueId, teams, nextTour, onCreated }: CreateFormProps) {
 
   const teamsForB = teams.filter(t => t.id !== teamA)
 
+  const teamOptions: SelectOption[] = teams.map(t => ({ value: t.id, label: t.name, color: t.color ?? null }))
+  const teamsForBOptions: SelectOption[] = teamsForB.map(t => ({ value: t.id, label: t.name, color: t.color ?? null }))
+
   const handleSave = async () => {
     if (!teamA || !teamB) { showToast('Выберите обе команды', 'error'); return }
     if (teamA === teamB)  { showToast('Команды не могут совпадать', 'error'); return }
@@ -103,19 +108,23 @@ function CreateForm({ leagueId, teams, nextTour, onCreated }: CreateFormProps) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className={lbl} style={lc}>Команда 1 (хозяева)</label>
-          <select value={teamA} onChange={e => { setTeamA(e.target.value); if (e.target.value === teamB) setTeamB('') }}
-            className={INP} style={{ cursor: 'pointer' }}>
-            <option value="">— Выберите —</option>
-            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <CustomSelect
+            value={teamA}
+            onChange={v => { const s = String(v); setTeamA(s); if (s === teamB) setTeamB('') }}
+            options={teamOptions}
+            placeholder="— Выберите —"
+            accentColor={teams.find(t => t.id === teamA)?.color ?? null}
+          />
         </div>
         <div>
           <label className={lbl} style={lc}>Команда 2 (гости)</label>
-          <select value={teamB} onChange={e => setTeamB(e.target.value)}
-            className={INP} style={{ cursor: 'pointer' }}>
-            <option value="">— Выберите —</option>
-            {teamsForB.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <CustomSelect
+            value={teamB}
+            onChange={v => setTeamB(String(v))}
+            options={teamsForBOptions}
+            placeholder="— Выберите —"
+            accentColor={teams.find(t => t.id === teamB)?.color ?? null}
+          />
         </div>
       </div>
 
@@ -164,6 +173,8 @@ function EditCard({ match, teams, onSaved, onCancel }: EditCardProps) {
   const [saving, setSaving] = useState(false)
 
   const teamsForB = teams.filter(t => t.id !== teamA)
+  const teamOptions: SelectOption[] = teams.map(t => ({ value: t.id, label: t.name, color: t.color ?? null }))
+  const teamsForBOptions: SelectOption[] = teamsForB.map(t => ({ value: t.id, label: t.name, color: t.color ?? null }))
   const lbl = 'block text-xs mb-1 font-medium'
   const lc  = { color: 'var(--color-brand-text-muted)' }
 
@@ -202,18 +213,22 @@ function EditCard({ match, teams, onSaved, onCancel }: EditCardProps) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
           <label className={lbl} style={lc}>Команда 1</label>
-          <select value={teamA} onChange={e => { setTeamA(e.target.value); if (e.target.value === teamB) setTeamB('') }}
-            className={INP} style={{ cursor: 'pointer' }}>
-            {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <CustomSelect
+            value={teamA}
+            onChange={v => { const s = String(v); setTeamA(s); if (s === teamB) setTeamB('') }}
+            options={teamOptions}
+            accentColor={teams.find(t => t.id === teamA)?.color ?? null}
+          />
         </div>
         <div>
           <label className={lbl} style={lc}>Команда 2</label>
-          <select value={teamB} onChange={e => setTeamB(e.target.value)}
-            className={INP} style={{ cursor: 'pointer' }}>
-            <option value="">— Выберите —</option>
-            {teamsForB.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          <CustomSelect
+            value={teamB}
+            onChange={v => setTeamB(String(v))}
+            options={teamsForBOptions}
+            placeholder="— Выберите —"
+            accentColor={teams.find(t => t.id === teamB)?.color ?? null}
+          />
         </div>
       </div>
 
@@ -272,20 +287,17 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
   const loading = loadingMatches || loadingTeams
   const error   = errorMatches || errorTeams
 
-  // ── Все хуки ВЫШЕ ранних return (правило хуков React) ─────────────────────
-  const scheduledMatches = useMemo(() =>
-    (allMatches as MatchV[])
-      .filter(m => m.status === 'scheduled')
-      .sort((a, b) => a.tour !== b.tour ? a.tour - b.tour : (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? '')),
-    [allMatches]
-  )
+  if (!selectedLeague) return <Empty text="Выберите лигу" />
+  if (loading) return <Spinner className="py-20" />
+  if (error)   return <Empty text={`Ошибка: ${error}`} />
 
-  const playedMatches = useMemo(() =>
-    (allMatches as MatchV[])
-      .filter(m => m.status === 'played')
-      .sort((a, b) => (b.played_at ?? b.created_at).localeCompare(a.played_at ?? a.created_at)),
-    [allMatches]
-  )
+  const scheduledMatches = (allMatches as MatchV[])
+    .filter(m => m.status === 'scheduled')
+    .sort((a, b) => a.tour !== b.tour ? a.tour - b.tour : (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
+
+  const playedMatches = (allMatches as MatchV[])
+    .filter(m => m.status === 'played')
+    .sort((a, b) => (b.played_at ?? b.created_at).localeCompare(a.played_at ?? a.created_at))
 
   const tourGroups = useMemo(() => {
     const map = new Map<number, MatchV[]>()
@@ -298,16 +310,12 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
   const teamMap  = useMemo(() => new Map(teams.map(t => [t.id, t])), [teams])
   const nextTour = scheduledMatches.length > 0 ? Math.max(...scheduledMatches.map(m => m.tour)) + 1 : 1
 
-  if (!selectedLeague) return <Empty text="Выберите лигу" />
-  if (loading) return <Spinner className="py-20" />
-  if (error)   return <Empty text={`Ошибка: ${error}`} />
-
   const handleDelete = (m: MatchV) => {
     const tA = teamMap.get(m.team_a_id), tB = teamMap.get(m.team_b_id)
-    const label = tA && tB ? `${tA.name} vs ${tB.name}` : 'матч'
+    const label = tA && tB ? `${tA.name} vs ${tB.name}` : 'match'
     showConfirm({
       title: 'Удалить матч', confirmText: 'Удалить', isDangerous: true,
-      message: `«${label}» (Тур ${m.tour}) будет удалён из расписания.`,
+      message: `Матч (Тур ${m.tour}) будет удалён из расписания.`,
       onConfirm: async () => {
         const { error: err } = await deleteMatch(m.id)
         if (err) showToast(`Ошибка: ${err}`, 'error')
@@ -319,7 +327,6 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
   return (
     <div className="space-y-4">
 
-      {/* ── Создать матч (admin) ──────────────────────────────────────────── */}
       {isAdmin && (
         <div className="rounded-2xl overflow-hidden"
           style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -351,21 +358,19 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
         </div>
       )}
 
-      {/* ── Матчи по турам ───────────────────────────────────────────────── */}
       {tourGroups.length === 0 ? (
         <Empty text={isAdmin ? 'Расписание пусто — добавьте первый матч выше' : 'Запланированных матчей нет'} />
       ) : (
         <div className="space-y-5">
           {tourGroups.map(([tour, tourMatches]) => (
             <div key={tour}>
-              {/* Тур-заголовок */}
               <div className="flex items-center gap-2 mb-2 px-1">
                 <span className="label-caps text-[10px] px-2.5 py-1 rounded-full font-bold"
                   style={{ background: 'rgba(0,117,49,0.18)', color: 'var(--color-brand-primary)' }}>
                   ТУР {tour}
                 </span>
                 <span className="text-[10px] font-medium" style={{ color: 'var(--color-brand-outline)' }}>
-                  {tourMatches.length} {tourMatches.length === 1 ? 'матч' : tourMatches.length < 5 ? 'матча' : 'матчей'}
+                  {tourMatches.length}
                 </span>
               </div>
 
@@ -388,7 +393,6 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
 
                   return (
                     <div key={m.id} className="bento-card px-4 py-3.5">
-                      {/* Верхняя строка: мета + кнопки */}
                       <div className="flex items-start justify-between mb-3 gap-2">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
                           {m.scheduled_at ? (
@@ -418,7 +422,6 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
                           )}
                         </div>
 
-                        {/* Кнопки admin */}
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {isAdmin && (
                             <>
@@ -451,7 +454,6 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
                         </div>
                       </div>
 
-                      {/* Команды VS */}
                       <div className="flex items-center gap-2">
                         <TeamLabel team={tA} align="left" />
                         <div className="flex-shrink-0 px-3 py-1 rounded-xl mx-1 text-center"
@@ -469,7 +471,6 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
         </div>
       )}
 
-      {/* ── Сыгранные (свёрнуто) ─────────────────────────────────────────── */}
       {playedMatches.length > 0 && (
         <div className="rounded-2xl overflow-hidden"
           style={{ background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -478,7 +479,7 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
             onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
             <span className="flex-1 text-xs font-semibold text-left" style={{ color: 'var(--color-brand-outline)' }}>
-              📋 Сыгранные матчи ({playedMatches.length})
+              Сыгранные матчи ({playedMatches.length})
             </span>
             {showPlayed ? <ChevronUp size={13} style={{ color: 'var(--color-brand-outline)' }} /> : <ChevronDown size={13} style={{ color: 'var(--color-brand-outline)' }} />}
           </button>
@@ -489,7 +490,7 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
                 if (!tA || !tB) return null
                 const winA = (m.score_a ?? 0) > (m.score_b ?? 0)
                 const winB = (m.score_b ?? 0) > (m.score_a ?? 0)
-                const ds = m.played_at ? new Date(m.played_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '—'
+                const ds = m.played_at ? new Date(m.played_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : '-'
                 return (
                   <div key={m.id} className="flex items-center gap-2 py-2 px-2 rounded-xl mt-1.5"
                     style={{ background: 'rgba(255,255,255,0.02)', opacity: 0.75 }}>
