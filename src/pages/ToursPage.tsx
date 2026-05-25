@@ -74,12 +74,13 @@ function TeamRow({
 }
 
 export function ToursPage({ matches, teams, loading, error }: ToursPageProps) {
-  if (loading) return <Spinner className="py-20" />
-  if (error) return <Empty text={`Ошибка: ${error}`} />
-
+  // ── Все хуки ВЫШЕ ранних return (правило хуков React) ─────────────────────
   const teamMap = useMemo(() => new Map(teams.map(t => [t.id, t])), [teams])
-  const played = matches.filter(m => m.status === 'played')
-  if (!played.length) return <Empty text="Сыгранных матчей ещё нет" />
+
+  const played = useMemo(
+    () => matches.filter(m => m.status === 'played'),
+    [matches]
+  )
 
   const tours = useMemo(() => {
     const map = new Map<number, Match[]>()
@@ -90,6 +91,10 @@ export function ToursPage({ matches, teams, loading, error }: ToursPageProps) {
     }
     return Array.from(map.entries()).sort((a, b) => b[0] - a[0])
   }, [played])
+
+  if (loading) return <Spinner className="py-20" />
+  if (error) return <Empty text={`Ошибка: ${error}`} />
+  if (!played.length) return <Empty text="Сыгранных матчей ещё нет" />
 
   return (
     <div className="space-y-8">

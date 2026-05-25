@@ -98,7 +98,7 @@ export interface UpdateSeasonArgs {
   seasonId: string
   name?: string
   year?: number
-  status?: 'active' | 'archived'
+  status?: 'active' | 'archived' | 'finished'
 }
 
 export interface UpdateLeagueArgs {
@@ -362,7 +362,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (name   !== undefined) update.name   = name
     if (year   !== undefined) update.year   = year
     if (status !== undefined) {
-      // При активации этого сезона — архивируем все остальные
+      // При активации этого сезона — архивируем/завершаем все остальные активные
       if (status === 'active') {
         await supabase.from('seasons').update({ status: 'archived' }).neq('id', seasonId)
       }

@@ -17,7 +17,7 @@ export type Database = {
           id: string
           name: string
           year: number
-          status: 'active' | 'archived'
+          status: 'active' | 'archived' | 'finished'
           started_at: string | null
           finished_at: string | null
           created_at: string
@@ -26,7 +26,7 @@ export type Database = {
           id?: string
           name: string
           year: number
-          status?: 'active' | 'archived'
+          status?: 'active' | 'archived' | 'finished'
           started_at?: string | null
           finished_at?: string | null
           created_at?: string
@@ -35,7 +35,7 @@ export type Database = {
           id?: string
           name?: string
           year?: number
-          status?: 'active' | 'archived'
+          status?: 'active' | 'archived' | 'finished'
           started_at?: string | null
           finished_at?: string | null
           created_at?: string
@@ -256,7 +256,7 @@ export type Database = {
       }
     }
     Enums: {
-      season_status: 'active' | 'archived'
+      season_status: 'active' | 'archived' | 'finished' | 'finished'
       match_status: 'scheduled' | 'played' | 'cancelled'
       user_role: 'viewer' | 'admin' | 'superadmin'
     }

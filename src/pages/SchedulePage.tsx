@@ -272,17 +272,20 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
   const loading = loadingMatches || loadingTeams
   const error   = errorMatches || errorTeams
 
-  if (!selectedLeague) return <Empty text="Выберите лигу" />
-  if (loading) return <Spinner className="py-20" />
-  if (error)   return <Empty text={`Ошибка: ${error}`} />
+  // ── Все хуки ВЫШЕ ранних return (правило хуков React) ─────────────────────
+  const scheduledMatches = useMemo(() =>
+    (allMatches as MatchV[])
+      .filter(m => m.status === 'scheduled')
+      .sort((a, b) => a.tour !== b.tour ? a.tour - b.tour : (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? '')),
+    [allMatches]
+  )
 
-  const scheduledMatches = (allMatches as MatchV[])
-    .filter(m => m.status === 'scheduled')
-    .sort((a, b) => a.tour !== b.tour ? a.tour - b.tour : (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
-
-  const playedMatches = (allMatches as MatchV[])
-    .filter(m => m.status === 'played')
-    .sort((a, b) => (b.played_at ?? b.created_at).localeCompare(a.played_at ?? a.created_at))
+  const playedMatches = useMemo(() =>
+    (allMatches as MatchV[])
+      .filter(m => m.status === 'played')
+      .sort((a, b) => (b.played_at ?? b.created_at).localeCompare(a.played_at ?? a.created_at)),
+    [allMatches]
+  )
 
   const tourGroups = useMemo(() => {
     const map = new Map<number, MatchV[]>()
@@ -294,6 +297,10 @@ export function SchedulePage({ isAdmin, onEnterResult }: Props) {
 
   const teamMap  = useMemo(() => new Map(teams.map(t => [t.id, t])), [teams])
   const nextTour = scheduledMatches.length > 0 ? Math.max(...scheduledMatches.map(m => m.tour)) + 1 : 1
+
+  if (!selectedLeague) return <Empty text="Выберите лигу" />
+  if (loading) return <Spinner className="py-20" />
+  if (error)   return <Empty text={`Ошибка: ${error}`} />
 
   const handleDelete = (m: MatchV) => {
     const tA = teamMap.get(m.team_a_id), tB = teamMap.get(m.team_b_id)

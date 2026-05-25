@@ -142,28 +142,35 @@ export default function AppV2() {
             )}
           </div>
 
-          {/* ROW 2: Переключатель сезонов (если >1) ──────────────────────────── */}
-          {!isLoading && seasons.length > 1 && (
-            <div className="flex justify-center gap-1.5 flex-wrap">
-              {seasons.map(s => (
-                <button
-                  key={s.id}
-                  onClick={() => selectSeason(s)}
-                  className="label-caps text-[10px] px-3 py-1 rounded-full font-semibold transition-all"
-                  style={
-                    season?.id === s.id
-                      ? { background: 'rgba(0,117,49,0.28)', color: 'var(--color-brand-primary)', border: '1px solid rgba(122,219,138,0.30)' }
-                      : { background: 'rgba(255,255,255,0.05)', color: 'var(--color-brand-text-muted)', border: '1px solid rgba(255,255,255,0.08)' }
-                  }
-                >
-                  {s.name}
-                  {s.status === 'active' && (
-                    <span className="ml-1 text-[8px]" style={{ color: 'var(--color-brand-primary)', opacity: 0.8 }}>●</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* ROW 2: Переключатель сезонов (active + finished; archived скрыт) ── */}
+          {!isLoading && (() => {
+            const visibleSeasons = seasons.filter(s => s.status !== 'archived')
+            if (visibleSeasons.length <= 1) return null
+            return (
+              <div className="flex justify-center gap-1.5 flex-wrap">
+                {visibleSeasons.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => selectSeason(s)}
+                    className="label-caps text-[10px] px-3 py-1 rounded-full font-semibold transition-all flex items-center gap-1"
+                    style={
+                      season?.id === s.id
+                        ? { background: 'rgba(0,117,49,0.28)', color: 'var(--color-brand-primary)', border: '1px solid rgba(122,219,138,0.30)' }
+                        : { background: 'rgba(255,255,255,0.05)', color: 'var(--color-brand-text-muted)', border: '1px solid rgba(255,255,255,0.08)' }
+                    }
+                  >
+                    {s.name}
+                    {s.status === 'active' && (
+                      <span className="text-[8px]" style={{ color: 'var(--color-brand-primary)', opacity: 0.8 }}>●</span>
+                    )}
+                    {s.status === 'finished' && (
+                      <span className="text-[8px]" style={{ color: '#93c5fd', opacity: 0.8 }}>🏆</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
 
           {/* ROW 3: Кнопки лиг (по центру) ─────────────────────────────────── */}
           {!isLoading && leagues.length > 0 && (
@@ -272,7 +279,7 @@ export default function AppV2() {
             {activeTab === 'tours'       && <ToursPage      matches={matches} teams={teams} loading={loadingMatches || loadingTeams} error={errorMatches || errorTeams} />}
             {activeTab === 'teams'       && <TeamsPage       teams={teams}     loading={loadingTeams} isAdmin={isAdmin} onEditTeam={setEditingTeam} error={errorTeams} />}
             {activeTab === 'match-entry' && isAdmin && <MatchEntryPage leagueName={selectedLeague.name}  />}
-            {activeTab === 'admin'       && isAdmin && <AdminPanelPage  />}
+            {activeTab === 'admin'       && isAdmin && <AdminPanelPage onNavigateToSchedule={() => setActiveTab('schedule')} />}
           </>
         )}
       </main>
@@ -317,12 +324,14 @@ export default function AppV2() {
         )
       })()}
 
-      <TeamEditModal
-        team={editingTeam}
-        onClose={() => setEditingTeam(null)}
-        onRefetch={refetchTeams}
-        onSave={() => setEditingTeam(null)}
-      />
+      {editingTeam && (
+        <TeamEditModal
+          team={editingTeam}
+          onClose={() => setEditingTeam(null)}
+          onRefetch={refetchTeams}
+          onSave={() => setEditingTeam(null)}
+        />
+      )}
     </div>
   )
 }
