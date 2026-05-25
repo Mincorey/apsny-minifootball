@@ -107,12 +107,12 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
 
                 {/* Sticky Команда */}
                 <th
-                  className="label-caps text-[10px] py-3 px-3 text-left"
+                  className="label-caps text-[10px] py-3 px-2 text-left"
                   style={{
                     color: 'var(--color-brand-outline)',
                     position: 'sticky', left: `${RANK_W}px`, zIndex: 3,
                     background: STICKY_BG,
-                    minWidth: '130px',
+                    minWidth: '110px',
                   }}
                 >Команда</th>
 
@@ -152,16 +152,16 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
 
                   {/* Sticky Команда */}
                   <td
-                    className="py-3 px-3"
+                    className="py-3 px-2"
                     style={{
                       position: 'sticky', left: `${RANK_W}px`, zIndex: 1,
                       background: STICKY_BG,
-                      minWidth: '130px',
+                      minWidth: '110px',
                     }}
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
-                      <span className="font-medium text-sm" style={{ color: 'var(--color-brand-text)' }}>{row.team_name}</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
+                      <span className="font-medium text-xs leading-tight" style={{ color: 'var(--color-brand-text)' }}>{row.team_name}</span>
                     </div>
                   </td>
 
@@ -208,7 +208,3 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
           </div>
         ))}
       </div>
-
-    </div>
-  )
-}
