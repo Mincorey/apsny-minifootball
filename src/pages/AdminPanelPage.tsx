@@ -499,10 +499,10 @@ function AdminSeasonCard({
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
-  onNavigateToSchedule: () => void
+  onNavigateToSchedule?: () => void
 }
 
-export default function AdminPanelPage({ onNavigateToSchedule }: Props) {
+export function AdminPanelPage({ onNavigateToSchedule = () => {} }: Props) {
   const { seasons, loadingSeasons, refetchSeasons } = useData()
   const [showWizard, setShowWizard] = useState(false)
 
