@@ -1,5 +1,5 @@
 (function () {
-  var CURRENT = "apsny-mfl-v4";
+  var CURRENT = "apsny-mfl-v5";
   if (!("serviceWorker" in navigator)) return;
 
   caches.keys().then(function (keys) {

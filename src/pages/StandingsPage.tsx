@@ -132,11 +132,12 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
                       position: 'sticky', left: `${RANK_W}px`, zIndex: 1,
                       background: STICKY_BG,
                       minWidth: '110px',
+                      maxWidth: '150px',
                     }}
                   >
                     <div className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
-                      <span className="font-medium text-xs leading-tight" style={{ color: 'var(--color-brand-text)' }}>{row.team_name}</span>
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: row.color }} />
+                      <span style={{ color: 'var(--color-brand-text)', fontSize: '11px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.team_name}</span>
                     </div>
                   </td>
 

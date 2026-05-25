@@ -1,4 +1,4 @@
-const CACHE_NAME = 'apsny-mfl-v4';
+const CACHE_NAME = 'apsny-mfl-v5';
 
 // ─── Install: skip waiting immediately ─────────────────────────────────────
 self.addEventListener('install', (event) => {
