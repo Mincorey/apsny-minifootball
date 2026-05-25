@@ -6,7 +6,7 @@
  * после чего Supabase VIEW 'standings' и 'top_scorers' пересчитываются автоматически.
  */
 
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, useMemo, type FormEvent } from 'react'
 import { Check, Loader2, Minus, Plus, ClipboardCheck, ChevronDown, ChevronUp, Edit2, Trash2, X } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
@@ -211,6 +211,9 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
     }
   }, [teamBId, teams])
 
+  // Сброс страницы при смене лиги
+  useEffect(() => { setCurrentPage(0) }, [selectedLeague?.id])
+
   const [saving,  setSaving]  = useState(false)
   const [success, setSuccess] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
@@ -218,13 +221,18 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
   // ── Режим редактирования существующего матча ─────────────────────────────────
   const [editingMatch, setEditingMatch] = useState<Match | null>(null)
   const [loadingEdit,  setLoadingEdit]  = useState(false)
+  const [currentPage,  setCurrentPage]  = useState(0)
 
   const handleStartEdit = async (match: Match) => {
     setLoadingEdit(true)
     setError(null)
 
     // Загружаем данные матча в форму
-    const playedDate = match.played_at ? new Date(match.played_at) : new Date()
+    const playedDate = match.played_at
+      ? new Date(match.played_at)
+      : match.scheduled_at
+      ? new Date(match.scheduled_at)
+      : new Date()
     setSelectedDate(playedDate)
     setHour(playedDate.getHours())
     setMinute(Math.floor(playedDate.getMinutes() / 5) * 5)
@@ -323,11 +331,18 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
   const mismatch = showStats && teamA && teamB &&
     (statGoalsA !== scoreA || statGoalsB !== scoreB)
 
-  // Последние сыгранные матчи
-  const recentPlayed = matches
-    .filter(m => m.status === 'played')
-    .sort((a, b) => (b.played_at ?? b.created_at).localeCompare(a.played_at ?? a.created_at))
-    .slice(0, 10)
+  // Все матчи лиги — сортировка по дате, новые первые
+  const allMatchesSorted = useMemo(() =>
+    [...matches].sort((a, b) => {
+      const dateA = a.played_at ?? a.scheduled_at ?? a.created_at
+      const dateB = b.played_at ?? b.scheduled_at ?? b.created_at
+      return dateB.localeCompare(dateA)
+    }),
+    [matches]
+  )
+  const PAGE_SIZE   = 10
+  const totalPages  = Math.ceil(allMatchesSorted.length / PAGE_SIZE)
+  const pagedMatches = allMatchesSorted.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE)
 
   // ── Форматирование ───────────────────────────────────────────────────────────
   const formatDate = (d: Date) =>
@@ -712,80 +727,176 @@ export function MatchEntryPage({ leagueName, seasonName }: Props) {
         </button>
       </form>
 
-      {/* ── История последних матчей ───────────────────────────────────────── */}
-      {recentPlayed.length > 0 && (
+      {/* ── Все матчи с пагинацией ────────────────────────────────────────────── */}
+      {allMatchesSorted.length > 0 && (
         <div style={{ ...cardStyle, marginTop: '1.5rem' }}>
-          <div className="label-caps text-[10px] mb-3" style={{ color: 'var(--color-brand-outline)' }}>
-            📋 Последние записанные матчи
+          {/* Заголовок блока */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="label-caps text-[10px]" style={{ color: 'var(--color-brand-outline)' }}>
+              📋 Все матчи ({allMatchesSorted.length})
+            </span>
+            {totalPages > 1 && (
+              <span className="label-caps text-[9px]" style={{ color: 'var(--color-brand-outline)' }}>
+                стр. {currentPage + 1} / {totalPages}
+              </span>
+            )}
           </div>
+
+          {/* Список матчей */}
           <div className="space-y-2">
-            {recentPlayed.map(m => {
+            {pagedMatches.map(m => {
               const tA = teams.find(t => t.id === m.team_a_id)
               const tB = teams.find(t => t.id === m.team_b_id)
               if (!tA || !tB) return null
 
-              const date = m.played_at
-                ? new Date(m.played_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+              const isPlayed = m.status === 'played'
+              const rawDate = m.played_at ?? m.scheduled_at
+              const date = rawDate
+                ? new Date(rawDate).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
                 : '—'
-              const winA = (m.score_a ?? 0) > (m.score_b ?? 0)
-              const winB = (m.score_b ?? 0) > (m.score_a ?? 0)
-
+              const winA = isPlayed && (m.score_a ?? 0) > (m.score_b ?? 0)
+              const winB = isPlayed && (m.score_b ?? 0) > (m.score_a ?? 0)
               const isEditing = editingMatch?.id === m.id
+
               return (
-                <div key={m.id} className="flex items-center gap-2 py-2 px-3 rounded-xl transition-colors"
-                  style={{ background: isEditing ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.025)', border: isEditing ? '1px solid rgba(96,165,250,0.20)' : '1px solid transparent' }}>
-                  <span className="label-caps text-[9px] flex-shrink-0 w-14"
-                    style={{ color: 'var(--color-brand-outline)' }}>
-                    {date}
-                  </span>
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
-                    <span className="text-xs truncate"
-                      style={{ color: winA ? 'var(--color-brand-primary)' : 'var(--color-brand-text-muted)', fontWeight: winA ? 700 : 400 }}>
-                      {tA.name}
+                <div key={m.id}
+                  className="rounded-xl transition-colors"
+                  style={{
+                    background: isEditing ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.025)',
+                    border: isEditing ? '1px solid rgba(96,165,250,0.20)' : '1px solid transparent',
+                  }}
+                >
+                  {/* Строка данных */}
+                  <div className="flex items-center gap-2 py-2 px-3">
+                    {/* Дата */}
+                    <span className="label-caps text-[9px] flex-shrink-0 w-12" style={{ color: 'var(--color-brand-outline)' }}>
+                      {date}
                     </span>
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: tA.color }} />
-                  </div>
-                  <div className="text-sm font-black flex-shrink-0 px-2 tabular-nums"
-                    style={{ color: 'var(--color-brand-text)' }}>
-                    {m.score_a} : {m.score_b}
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: tB.color }} />
-                    <span className="text-xs truncate"
-                      style={{ color: winB ? 'var(--color-brand-primary)' : 'var(--color-brand-text-muted)', fontWeight: winB ? 700 : 400 }}>
-                      {tB.name}
-                    </span>
-                  </div>
-                  {/* Кнопки редактирования / удаления */}
-                  <div className="flex items-center gap-1 flex-shrink-0 ml-1">
-                    <button
-                      type="button"
-                      disabled={loadingEdit}
-                      onClick={() => handleStartEdit(m)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                      style={{ background: isEditing ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.06)', color: isEditing ? '#60a5fa' : 'var(--color-brand-text-muted)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = isEditing ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.14)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = isEditing ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.06)')}
-                      title="Редактировать матч"
-                    >
-                      {loadingEdit && editingMatch?.id === m.id ? <Loader2 size={11} className="animate-spin" /> : <Edit2 size={11} />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteMatch(m)}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                      style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
-                      title="Удалить матч"
-                    >
-                      <Trash2 size={11} />
-                    </button>
+
+                    {/* Команда A */}
+                    <div className="flex items-center gap-1 flex-1 min-w-0 justify-end">
+                      <span className="text-xs truncate"
+                        style={{ color: winA ? 'var(--color-brand-primary)' : 'var(--color-brand-text-muted)', fontWeight: winA ? 700 : 400 }}>
+                        {tA.name}
+                      </span>
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: tA.color }} />
+                    </div>
+
+                    {/* Счёт / статус */}
+                    {isPlayed ? (
+                      <div className="text-sm font-black flex-shrink-0 px-1.5 tabular-nums"
+                        style={{ color: 'var(--color-brand-text)', minWidth: '44px', textAlign: 'center' }}>
+                        {m.score_a} : {m.score_b}
+                      </div>
+                    ) : (
+                      <span className="label-caps text-[8px] flex-shrink-0 px-1.5 py-0.5 rounded"
+                        style={{ background: 'rgba(148,163,184,0.12)', color: 'var(--color-brand-outline)', minWidth: '44px', textAlign: 'center' }}>
+                        план
+                      </span>
+                    )}
+
+                    {/* Команда B */}
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: tB.color }} />
+                      <span className="text-xs truncate"
+                        style={{ color: winB ? 'var(--color-brand-primary)' : 'var(--color-brand-text-muted)', fontWeight: winB ? 700 : 400 }}>
+                        {tB.name}
+                      </span>
+                    </div>
+
+                    {/* Кнопки */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        disabled={loadingEdit}
+                        onClick={() => handleStartEdit(m)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                        style={{ background: isEditing ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.06)', color: isEditing ? '#60a5fa' : 'var(--color-brand-text-muted)' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = isEditing ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.14)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = isEditing ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.06)')}
+                        title={isPlayed ? 'Редактировать матч' : 'Внести результат'}
+                      >
+                        {loadingEdit && editingMatch?.id === m.id
+                          ? <Loader2 size={11} className="animate-spin" />
+                          : <Edit2 size={11} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMatch(m)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                        style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
+                        title="Удалить матч"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
             })}
           </div>
+
+          {/* Пагинация */}
+          {totalPages > 1 && (() => {
+            const pages: (number | '...')[] = []
+            if (totalPages <= 7) {
+              for (let i = 0; i < totalPages; i++) pages.push(i)
+            } else {
+              pages.push(0)
+              if (currentPage > 2) pages.push('...')
+              for (let i = Math.max(1, currentPage - 1); i <= Math.min(totalPages - 2, currentPage + 1); i++) pages.push(i)
+              if (currentPage < totalPages - 3) pages.push('...')
+              pages.push(totalPages - 1)
+            }
+            return (
+              <div className="flex items-center justify-center gap-1 mt-4 pt-3"
+                style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                {/* Prev */}
+                <button
+                  type="button"
+                  disabled={currentPage === 0}
+                  onClick={() => setCurrentPage(p => p - 1)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors label-caps text-[11px]"
+                  style={{ background: currentPage === 0 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)', color: currentPage === 0 ? 'var(--color-brand-outline)' : 'var(--color-brand-text-muted)', cursor: currentPage === 0 ? 'default' : 'pointer' }}
+                  onMouseEnter={e => { if (currentPage !== 0) e.currentTarget.style.background = 'rgba(255,255,255,0.12)' }}
+                  onMouseLeave={e => { if (currentPage !== 0) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+                >‹</button>
+
+                {/* Page buttons */}
+                {pages.map((p, idx) =>
+                  p === '...' ? (
+                    <span key={`el${idx}`} className="w-7 text-center label-caps text-[10px]"
+                      style={{ color: 'var(--color-brand-outline)' }}>…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setCurrentPage(p as number)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors label-caps text-[10px]"
+                      style={currentPage === p
+                        ? { background: 'var(--color-brand-accent)', color: '#fff', fontWeight: 700 }
+                        : { background: 'rgba(255,255,255,0.06)', color: 'var(--color-brand-text-muted)' }}
+                      onMouseEnter={e => { if (currentPage !== p) e.currentTarget.style.background = 'rgba(255,255,255,0.12)' }}
+                      onMouseLeave={e => { if (currentPage !== p) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+                    >{(p as number) + 1}</button>
+                  )
+                )}
+
+                {/* Next */}
+                <button
+                  type="button"
+                  disabled={currentPage === totalPages - 1}
+                  onClick={() => setCurrentPage(p => p + 1)}
+                  className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors label-caps text-[11px]"
+                  style={{ background: currentPage === totalPages - 1 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.06)', color: currentPage === totalPages - 1 ? 'var(--color-brand-outline)' : 'var(--color-brand-text-muted)', cursor: currentPage === totalPages - 1 ? 'default' : 'pointer' }}
+                  onMouseEnter={e => { if (currentPage !== totalPages - 1) e.currentTarget.style.background = 'rgba(255,255,255,0.12)' }}
+                  onMouseLeave={e => { if (currentPage !== totalPages - 1) e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+                >›</button>
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>
