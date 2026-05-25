@@ -14,6 +14,8 @@ import { useAuth } from './context/AuthContext'
 import { useDialogs } from './components/DialogsContext'
 import { Spinner } from './components/Spinner'
 import { MatchResultModal } from './components/MatchResultModal'
+import { MatchDetailModal } from './components/MatchDetailModal'
+import { sortStandingsWithH2H } from './utils/sortStandings'
 import { AdminLoginModal } from './components/AdminLoginModal'
 import { TeamEditModal } from './components/TeamEditModal'
 import { SplashScreen } from './components/SplashScreen'
@@ -64,6 +66,7 @@ export default function AppV2() {
   const [resultMatch,         setResultMatch]         = useState<Match | null>(null)
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false)
   const [editingTeam,         setEditingTeam]         = useState<typeof teams[0] | null>(null)
+  const [detailMatch,        setDetailMatch]        = useState<Match | null>(null)
 
   const handleSplashDone = useCallback(() => setShowSplash(false), [])
 
@@ -93,7 +96,8 @@ export default function AppV2() {
     }
   }
 
-  const teamMap  = useMemo(() => new Map(teams.map(t => [t.id, t])), [teams])
+  const teamMap       = useMemo(() => new Map(teams.map(t => [t.id, t])), [teams])
+  const sortedStandings = useMemo(() => sortStandingsWithH2H(standings, matches), [standings, matches])
   const isLoading = loadingSeasons || loadingLeagues
 
   return (
@@ -270,7 +274,7 @@ export default function AppV2() {
           <Empty text="Выберите лигу" />
         ) : (
           <div key={activeTab} className="page-enter">
-            {activeTab === 'table'    && <StandingsPage standings={standings} loading={loadingStandings} error={errorStandings} leagueName={selectedLeague.name} />}
+            {activeTab === 'table'    && <StandingsPage standings={sortedStandings} loading={loadingStandings} error={errorStandings} leagueName={selectedLeague.name} />}
             {activeTab === 'scorers'  && <ScorersPage   scorers={scorers}     loading={loadingScorers}   error={errorScorers} />}
             {activeTab === 'schedule' && (
               <SchedulePage
@@ -278,7 +282,7 @@ export default function AppV2() {
                 onEnterResult={setResultMatch}
               />
             )}
-            {activeTab === 'tours'       && <ToursPage      matches={matches} teams={teams} loading={loadingMatches || loadingTeams} error={errorMatches || errorTeams} />}
+            {activeTab === 'tours'       && <ToursPage      matches={matches} teams={teams} loading={loadingMatches || loadingTeams} error={errorMatches || errorTeams} onMatchClick={setDetailMatch} />}
             {activeTab === 'teams'       && <TeamsPage       teams={teams}     loading={loadingTeams} isAdmin={isAdmin} onEditTeam={setEditingTeam} error={errorTeams} />}
             {activeTab === 'match-entry' && isAdmin && <MatchEntryPage leagueName={selectedLeague.name} />}
             {activeTab === 'admin'       && isAdmin && <AdminPanelPage />}
@@ -322,6 +326,21 @@ export default function AppV2() {
             teamA={teamA}
             teamB={teamB}
             onClose={() => setResultMatch(null)}
+          />
+        )
+      })()}
+
+
+      {detailMatch && (() => {
+        const teamA = teamMap.get(detailMatch.team_a_id)
+        const teamB = teamMap.get(detailMatch.team_b_id)
+        if (!teamA || !teamB) return null
+        return (
+          <MatchDetailModal
+            match={detailMatch}
+            teamA={teamA}
+            teamB={teamB}
+            onClose={() => setDetailMatch(null)}
           />
         )
       })()}
