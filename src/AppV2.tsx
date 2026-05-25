@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Trophy,
   Users,
@@ -16,13 +16,14 @@ import { Spinner } from './components/Spinner'
 import { MatchResultModal } from './components/MatchResultModal'
 import { AdminLoginModal } from './components/AdminLoginModal'
 import { TeamEditModal } from './components/TeamEditModal'
+import { SplashScreen } from './components/SplashScreen'
 import { StandingsPage } from './pages/StandingsPage'
 import { ScorersPage } from './pages/ScorersPage'
 import { SchedulePage } from './pages/SchedulePage'
 import { ToursPage } from './pages/ToursPage'
 import { TeamsPage } from './pages/TeamsPage'
 import { MatchEntryPage } from './pages/MatchEntryPage'
-import AdminPanelPage from './pages/AdminPanelPage'
+import { AdminPanelPage } from './pages/AdminPanelPage'
 import { Empty } from './components/ui/Empty'
 import { ADMIN_LOGIN, ADMIN_PASSWORD_HASH } from './constants'
 import type { Match } from './types/database'
@@ -58,10 +59,13 @@ export default function AppV2() {
     localStorage.getItem('adminSessionToken') === 'authenticated'
   )
 
+  const [showSplash,          setShowSplash]          = useState(true)
   const [activeTab,           setActiveTab]           = useState<Tab>('table')
   const [resultMatch,         setResultMatch]         = useState<Match | null>(null)
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false)
   const [editingTeam,         setEditingTeam]         = useState<typeof teams[0] | null>(null)
+
+  const handleSplashDone = useCallback(() => setShowSplash(false), [])
 
   const isAdmin    = isAdminMode || isSupabaseAdmin
   const visibleTabs = ALL_TABS.filter(t => !t.adminOnly || isAdmin)
@@ -95,13 +99,12 @@ export default function AppV2() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-brand-bg)' }}>
 
-      {/* ── Header ────────────────────────────────────────────────────────────── */}
+      {/* ── Header ─────────────────────────────────────────────────────────────── */}
       <header className="glass-nav sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 space-y-2.5">
 
-          {/* ROW 1: Логотип + Название по центру (+ Admin badge под названием) */}
+          {/* ROW 1 */}
           <div className="flex flex-col items-center gap-2">
-            {/* Кликабельная область: логотип + заголовок */}
             <div
               className="flex items-center gap-3 cursor-pointer select-none"
               onClick={handleHeaderClick}
@@ -121,7 +124,6 @@ export default function AppV2() {
               </h1>
             </div>
 
-            {/* Admin badge + кнопка выхода — по центру под названием */}
             {isAdmin && (
               <div className="flex items-center gap-2.5">
                 <span
@@ -142,7 +144,7 @@ export default function AppV2() {
             )}
           </div>
 
-          {/* ROW 2: Переключатель сезонов (active + finished; archived скрыт) ── */}
+          {/* ROW 2: Season switcher */}
           {!isLoading && (() => {
             const visibleSeasons = seasons.filter(s => s.status !== 'archived')
             if (visibleSeasons.length <= 1) return null
@@ -172,7 +174,7 @@ export default function AppV2() {
             )
           })()}
 
-          {/* ROW 3: Кнопки лиг (по центру) ─────────────────────────────────── */}
+          {/* ROW 3: League buttons */}
           {!isLoading && leagues.length > 0 && (
             <div className="flex justify-center gap-2">
               {leagues.map(l => (
@@ -192,7 +194,7 @@ export default function AppV2() {
             </div>
           )}
 
-          {/* ROW 3: Навигационные вкладки ───────────────────────────────────── */}
+          {/* ROW 4: Navigation tabs */}
           <div className="flex gap-0.5 sm:gap-1 sm:justify-center sm:overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
             {visibleTabs.map(tab => {
               const Icon = tab.icon
@@ -241,7 +243,7 @@ export default function AppV2() {
         </div>
       </header>
 
-      {/* ── Main ──────────────────────────────────────────────────────────────── */}
+      {/* ── Main ────────────────────────────────────────────────────────────────── */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 pb-10">
 
         {hasError && (
@@ -267,8 +269,8 @@ export default function AppV2() {
         ) : !selectedLeague ? (
           <Empty text="Выберите лигу" />
         ) : (
-          <>
-            {activeTab === 'table'    && <StandingsPage standings={standings} loading={loadingStandings} error={errorStandings} leagueName={selectedLeague.name}  />}
+          <div key={activeTab} className="page-enter">
+            {activeTab === 'table'    && <StandingsPage standings={standings} loading={loadingStandings} error={errorStandings} leagueName={selectedLeague.name} />}
             {activeTab === 'scorers'  && <ScorersPage   scorers={scorers}     loading={loadingScorers}   error={errorScorers} />}
             {activeTab === 'schedule' && (
               <SchedulePage
@@ -278,13 +280,13 @@ export default function AppV2() {
             )}
             {activeTab === 'tours'       && <ToursPage      matches={matches} teams={teams} loading={loadingMatches || loadingTeams} error={errorMatches || errorTeams} />}
             {activeTab === 'teams'       && <TeamsPage       teams={teams}     loading={loadingTeams} isAdmin={isAdmin} onEditTeam={setEditingTeam} error={errorTeams} />}
-            {activeTab === 'match-entry' && isAdmin && <MatchEntryPage leagueName={selectedLeague.name}  />}
-            {activeTab === 'admin'       && isAdmin && <AdminPanelPage onNavigateToSchedule={() => setActiveTab('schedule')} />}
-          </>
+            {activeTab === 'match-entry' && isAdmin && <MatchEntryPage leagueName={selectedLeague.name} />}
+            {activeTab === 'admin'       && isAdmin && <AdminPanelPage />}
+          </div>
         )}
       </main>
 
-      {/* ── Footer ────────────────────────────────────────────────────────────── */}
+      {/* ── Footer ───────────────────────────────────────────────────────────────── */}
       <footer className="py-6 text-center" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
         <div className="max-w-5xl mx-auto px-4">
           <p className="label-caps text-[11px]" style={{ color: 'var(--color-brand-outline)' }}>
@@ -301,7 +303,7 @@ export default function AppV2() {
         </div>
       </footer>
 
-      {/* ── Modals ────────────────────────────────────────────────────────────── */}
+      {/* ── Modals ───────────────────────────────────────────────────────────────── */}
       <AdminLoginModal
         isOpen={showAdminLoginModal}
         onClose={() => setShowAdminLoginModal(false)}
@@ -332,6 +334,9 @@ export default function AppV2() {
           onSave={() => setEditingTeam(null)}
         />
       )}
+
+      {/* Splash screen */}
+      {showSplash && <SplashScreen onDone={handleSplashDone} />}
     </div>
   )
 }

@@ -256,7 +256,7 @@ export type Database = {
       }
     }
     Enums: {
-      season_status: 'active' | 'archived' | 'finished' | 'finished'
+      season_status: 'active' | 'archived' | 'finished'
       match_status: 'scheduled' | 'played' | 'cancelled'
       user_role: 'viewer' | 'admin' | 'superadmin'
     }

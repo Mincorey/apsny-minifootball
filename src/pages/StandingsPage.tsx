@@ -35,43 +35,18 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
   if (error)   return <Empty text={`❌ Ошибка: ${error}`} />
   if (!standings.length) return <Empty text="Команды не найдены" />
 
-  const totalGames = Math.round(standings.reduce((s, r) => s + r.played, 0) / 2)
-  const totalGoals = standings.reduce((s, r) => s + r.goals_for, 0)
-  const avgGoals   = totalGames > 0 ? (totalGoals / totalGames).toFixed(1) : '—'
-
   return (
     <div className="space-y-4">
 
-      {/* Page header + stats cards */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold" style={{ color: 'var(--color-brand-text)' }}>
-            Турнирная таблица
-          </h2>
-          {(seasonName || leagueName) && (
-            <p className="mt-1 text-sm" style={{ color: 'var(--color-brand-text-muted)' }}>
-              {seasonName}{seasonName && leagueName ? ' • ' : ''}{leagueName}
-            </p>
-          )}
-        </div>
-
-        {totalGames > 0 && (
-          <div className="flex gap-3 flex-shrink-0">
-            <div
-              className="rounded-xl px-4 py-3 text-center min-w-[90px]"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
-            >
-              <div className="label-caps text-[9px] mb-1" style={{ color: 'var(--color-brand-outline)' }}>Игры</div>
-              <div className="text-xl font-bold" style={{ color: 'var(--color-brand-text)' }}>{totalGames}</div>
-            </div>
-            <div
-              className="rounded-xl px-4 py-3 text-center min-w-[90px]"
-              style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}
-            >
-              <div className="label-caps text-[9px] mb-1" style={{ color: 'var(--color-brand-outline)' }}>Голов / игра</div>
-              <div className="text-xl font-bold" style={{ color: 'var(--color-brand-text)' }}>{avgGoals}</div>
-            </div>
-          </div>
+      {/* Page header */}
+      <div>
+        <h2 className="text-2xl sm:text-3xl font-extrabold" style={{ color: 'var(--color-brand-text)' }}>
+          Турнирная таблица
+        </h2>
+        {(seasonName || leagueName) && (
+          <p className="mt-1 text-sm" style={{ color: 'var(--color-brand-text-muted)' }}>
+            {seasonName}{seasonName && leagueName ? ' • ' : ''}{leagueName}
+          </p>
         )}
       </div>
 
@@ -208,3 +183,7 @@ export function StandingsPage({ standings, loading, error, leagueName, seasonNam
           </div>
         ))}
       </div>
+
+    </div>
+  )
+}
