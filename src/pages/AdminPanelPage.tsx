@@ -1,364 +1,76 @@
 /**
- * AdminPanelPage — панель управления для администратора.
+ * AdminPanelPage — полностью переработанная иерархическая панель управления.
  *
- * Секции:
- *   1. Лиги    — создать / удалить лигу в текущем сезоне
- *   2. Команды — добавить / удалить команду в выбранной лиге
- *   3. Туры    — запланировать матч(и) нового тура (EPL-стиль)
+ * Структура: Сезоны → Лиги → Команды (всё вложено)
+ * + Кнопка «Создать новый сезон» открывает пошаговый SeasonWizard
  */
 
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import {
-  Trophy, Users, ListOrdered, Plus, Trash2,
-  ChevronDown, ChevronUp, Loader2, Check, Upload, Edit2, X, Calendar, Archive, Star,
+  Plus, Trash2, ChevronDown, ChevronUp, Loader2, Edit2, X, Check,
+  Archive, Star, Users, Shield,
 } from 'lucide-react'
-import { uploadAndCompressImage } from '../lib/imageUtils'
-import { generateUUID } from '../lib/uuid'
 import { useData } from '../context/DataContext'
+import type { UpdateLeagueArgs } from '../context/DataContext'
+import { useLeagues } from '../hooks/useLeagues'
+import { useTeamsWithPlayers } from '../hooks/useTeams'
 import { useDialogs } from '../components/DialogsContext'
-import { CustomSelect } from '../components/CustomSelect'
 import { Spinner } from '../components/Spinner'
-import { Empty } from '../components/ui/Empty'
+import { TeamEditModal } from '../components/TeamEditModal'
+import { SeasonWizard } from '../components/SeasonWizard'
+import type { Season, League, TeamWithPlayers } from '../types/database'
+import { COLOR_PALETTE } from '../constants/colors'
+import { supabase } from '../lib/supabase'
+import { generateUUID } from '../lib/uuid'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Утилиты
+// TeamRow
 // ─────────────────────────────────────────────────────────────────────────────
 
-const cardStyle: React.CSSProperties = {
-  background:   'rgba(255,255,255,0.03)',
-  border:       '1px solid rgba(255,255,255,0.07)',
-  borderRadius: '1rem',
-  padding:      '1.25rem',
-}
-
-const inputStyle: React.CSSProperties = {
-  background:   'rgba(20,25,35,0.95)',
-  border:       '1.5px solid rgba(255,255,255,0.10)',
-  borderRadius: '0.75rem',
-  color:        'var(--color-brand-text)',
-  padding:      '0.6rem 0.75rem',
-  fontSize:     '0.875rem',
-  width:        '100%',
-  outline:      'none',
-}
-
-const TEAM_COLORS = [
-  '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71',
-  '#1abc9c', '#3498db', '#9b59b6', '#e91e63',
-  '#ff5722', '#607d8b', '#795548', '#009688',
-]
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Секция-аккордеон
-// ─────────────────────────────────────────────────────────────────────────────
-
-function Section({
-  icon, title, children, defaultOpen = false,
+function TeamRow({
+  team,
+  onEdit,
+  onDelete,
 }: {
-  icon: React.ReactNode
-  title: string
-  children: React.ReactNode
-  defaultOpen?: boolean
+  team: TeamWithPlayers
+  onEdit: (team: TeamWithPlayers) => void
+  onDelete: (teamId: string, name: string) => void
 }) {
-  const [open, setOpen] = useState(defaultOpen)
-
   return (
-    <div style={cardStyle}>
-      <button
-        type="button"
-        className="w-full flex items-center gap-3 group"
-        onClick={() => setOpen(o => !o)}
+    <div className="flex items-center gap-3 px-4 py-3 bg-gray-800/40 rounded-xl border border-gray-700/50 hover:border-gray-600/80 transition-colors group">
+      {/* Логотип */}
+      <div
+        className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden border-2"
+        style={{ borderColor: team.color }}
       >
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: 'rgba(0,117,49,0.18)', color: 'var(--color-brand-primary)' }}
-        >
-          {icon}
-        </div>
-        <span
-          className="flex-1 text-left text-base font-bold"
-          style={{ color: 'var(--color-brand-text)' }}
-        >
-          {title}
-        </span>
-        {open
-          ? <ChevronUp size={16} style={{ color: 'var(--color-brand-outline)' }} />
-          : <ChevronDown size={16} style={{ color: 'var(--color-brand-outline)' }} />}
-      </button>
-
-      {open && (
-        <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Секция 0: Сезоны
-// ─────────────────────────────────────────────────────────────────────────────
-
-function SeasonsSection() {
-  const {
-    seasons, season: currentSeason,
-    createSeason, updateSeason, deleteSeason, selectSeason, refetchSeasons,
-    loadingSeasons,
-  } = useData()
-  const { showToast, showConfirm } = useDialogs()
-
-  const [newName,    setNewName]    = useState('')
-  const [newYear,    setNewYear]    = useState(new Date().getFullYear())
-  const [saving,     setSaving]     = useState(false)
-  const [success,    setSuccess]    = useState(false)
-  const [editingId,  setEditingId]  = useState<string | null>(null)
-  const [editName,   setEditName]   = useState('')
-
-  const handleCreate = async () => {
-    const trimmed = newName.trim()
-    if (!trimmed) return
-    setSaving(true)
-    const { error } = await createSeason({ name: trimmed, year: newYear })
-    setSaving(false)
-    if (error) {
-      showToast(`Ошибка: ${error}`, 'error')
-    } else {
-      setSuccess(true)
-      setNewName('')
-      showToast(`Сезон «${trimmed}» создан`, 'success', 3000)
-      setTimeout(() => setSuccess(false), 2000)
-    }
-  }
-
-  const handleStartEdit = (id: string, name: string) => {
-    setEditingId(id)
-    setEditName(name)
-  }
-
-  const handleSaveEdit = async (id: string) => {
-    const trimmed = editName.trim()
-    if (!trimmed) return
-    const { error } = await updateSeason({ seasonId: id, name: trimmed })
-    if (error) showToast(`Ошибка: ${error}`, 'error')
-    else { setEditingId(null); showToast('Сезон обновлён', 'success', 2000) }
-  }
-
-  const handleSetActive = (id: string, name: string) => {
-    showConfirm({
-      title:       'Сделать текущим',
-      message:     `Сезон «${name}» станет активным. Остальные сезоны будут переведены в архив.`,
-      confirmText: 'Подтвердить',
-      isDangerous: false,
-      onConfirm: async () => {
-        const { error } = await updateSeason({ seasonId: id, status: 'active' })
-        if (error) showToast(`Ошибка: ${error}`, 'error')
-        else {
-          selectSeason(seasons.find(s => s.id === id)!)
-          showToast(`Сезон «${name}» теперь активный`, 'success', 3000)
-          refetchSeasons()
+        {team.logo_url
+          ? <img src={team.logo_url} alt={team.name} className="w-full h-full object-cover" />
+          : <div className="w-full h-full" style={{ backgroundColor: team.color }} />
         }
-      },
-    })
-  }
-
-  const handleArchive = (id: string, name: string) => {
-    showConfirm({
-      title:       'Архивировать сезон',
-      message:     `Сезон «${name}» будет переведён в архив. Данные сохранятся.`,
-      confirmText: 'Архивировать',
-      isDangerous: false,
-      onConfirm: async () => {
-        const { error } = await updateSeason({ seasonId: id, status: 'archived' })
-        if (error) showToast(`Ошибка: ${error}`, 'error')
-        else showToast(`Сезон «${name}» перемещён в архив`, 'success', 3000)
-      },
-    })
-  }
-
-  const handleDelete = (id: string, name: string) => {
-    showConfirm({
-      title:       'Удалить сезон',
-      message:     `«${name}» будет удалён ВМЕСТЕ со всеми лигами, командами и матчами. Отменить нельзя.`,
-      confirmText: 'Удалить',
-      isDangerous: true,
-      onConfirm: async () => {
-        const { error } = await deleteSeason(id)
-        if (error) showToast(`Ошибка: ${error}`, 'error')
-        else showToast(`Сезон «${name}» удалён`, 'success', 3000)
-      },
-    })
-  }
-
-  return (
-    <div className="space-y-4">
-
-      {/* Список сезонов */}
-      {loadingSeasons ? (
-        <Spinner className="py-6" />
-      ) : seasons.length === 0 ? (
-        <p className="text-xs text-center py-3" style={{ color: 'var(--color-brand-outline)' }}>
-          Нет сезонов
+      </div>
+      {/* Название */}
+      <div className="flex-1 min-w-0">
+        <p className="text-white font-medium text-sm truncate">{team.name}</p>
+        <p className="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
+          <Users className="w-3 h-3" />
+          {team.players.length} игр.
         </p>
-      ) : (
-        <div className="space-y-2">
-          {seasons.map(s => {
-            const isActive  = s.status === 'active'
-            const isCurrent = currentSeason?.id === s.id
-            return (
-              <div
-                key={s.id}
-                className="rounded-xl px-3 py-2.5"
-                style={{
-                  background: isCurrent ? 'rgba(0,117,49,0.10)' : 'rgba(255,255,255,0.025)',
-                  border: isCurrent ? '1px solid rgba(122,219,138,0.20)' : '1px solid transparent',
-                }}
-              >
-                {editingId === s.id ? (
-                  /* Режим редактирования имени */
-                  <div className="flex items-center gap-2">
-                    <input
-                      autoFocus
-                      value={editName}
-                      onChange={e => setEditName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(s.id); if (e.key === 'Escape') setEditingId(null) }}
-                      style={{ ...inputStyle, flex: 1 }}
-                      onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-                      onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleSaveEdit(s.id)}
-                      className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
-                      style={{ background: 'var(--color-brand-accent)', color: '#fff' }}
-                    >
-                      <Check size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                      style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--color-brand-text-muted)' }}
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
-                ) : (
-                  /* Обычный вид */
-                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                    <Calendar size={14} style={{ color: isActive ? 'var(--color-brand-primary)' : 'var(--color-brand-outline)', flexShrink: 0 }} />
-                    <span className="flex-1 text-sm font-medium truncate" style={{ color: 'var(--color-brand-text)' }}>
-                      {s.name}
-                    </span>
-                    {/* Статус-бейдж */}
-                    <span
-                      className="label-caps text-[9px] px-2 py-0.5 rounded-full flex-shrink-0"
-                      style={isActive
-                        ? { background: 'rgba(0,117,49,0.22)', color: 'var(--color-brand-primary)' }
-                        : { background: 'rgba(255,255,255,0.08)', color: 'var(--color-brand-outline)' }
-                      }
-                    >
-                      {isActive ? '● Активный' : 'Архив'}
-                    </span>
-                    {/* Кнопки действий */}
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {/* Переименовать */}
-                      <button
-                        type="button"
-                        onClick={() => handleStartEdit(s.id, s.name)}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                        style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--color-brand-text-muted)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                        title="Переименовать"
-                      >
-                        <Edit2 size={12} />
-                      </button>
-                      {/* Сделать активным / В архив */}
-                      {isActive ? (
-                        <button
-                          type="button"
-                          onClick={() => handleArchive(s.id, s.name)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                          style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--color-brand-text-muted)' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
-                          title="Перевести в архив"
-                        >
-                          <Archive size={12} />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleSetActive(s.id, s.name)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                          style={{ background: 'rgba(0,117,49,0.12)', color: 'var(--color-brand-primary)' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0,117,49,0.25)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(0,117,49,0.12)')}
-                          title="Сделать активным"
-                        >
-                          <Star size={12} />
-                        </button>
-                      )}
-                      {/* Удалить */}
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(s.id, s.name)}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                        style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
-                        title="Удалить сезон"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Форма создания нового сезона */}
-      <div className="space-y-2 pt-1">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleCreate()}
-            placeholder="Название сезона (напр. 2026/2027)…"
-            style={{ ...inputStyle, flex: 1 }}
-            onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-            onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
-          />
-          <input
-            type="number"
-            value={newYear}
-            onChange={e => setNewYear(parseInt(e.target.value) || new Date().getFullYear())}
-            min={2000} max={2100}
-            placeholder="Год"
-            style={{ ...inputStyle, width: '5rem', flex: 'none' }}
-            onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-            onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
-          />
-        </div>
+      </div>
+      {/* Действия */}
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
-          type="button"
-          disabled={saving || !newName.trim()}
-          onClick={handleCreate}
-          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
-          style={success
-            ? { background: 'rgba(122,219,138,0.15)', color: 'var(--color-brand-primary)', border: '1px solid rgba(122,219,138,0.25)' }
-            : { background: 'var(--color-brand-accent)', color: '#fff' }
-          }
+          onClick={() => onEdit(team)}
+          className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-700 rounded-lg transition-colors"
+          title="Редактировать команду"
         >
-          {saving
-            ? <Loader2 size={15} className="animate-spin" />
-            : success
-              ? <><Check size={15} /> Сезон создан</>
-              : <><Plus size={15} /> Создать сезон</>}
+          <Edit2 className="w-3.5 h-3.5" />
+        </button>
+        <button
+          onClick={() => onDelete(team.id, team.name)}
+          className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded-lg transition-colors"
+          title="Удалить команду"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>
@@ -366,563 +78,465 @@ function SeasonsSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Секция 1: Лиги
+// LeagueRow
 // ─────────────────────────────────────────────────────────────────────────────
 
-function LeaguesSection() {
-  const {
-    season, leagues, loadingLeagues,
-    createLeague, deleteLeague, refetchLeagues,
-  } = useData()
-  const { showToast, showConfirm } = useDialogs()
+function LeagueRow({
+  league,
+  onLeagueDeleted,
+}: {
+  league: League
+  onLeagueDeleted: () => void
+}) {
+  const { createTeam, deleteTeam, updateLeague } = useData()
+  const { showConfirm, showToast } = useDialogs()
+  const { teams, loading: loadingTeams, refetch: refetchTeams } = useTeamsWithPlayers(league.id)
 
-  const [name,    setName]    = useState('')
-  const [saving,  setSaving]  = useState(false)
-  const [success, setSuccess] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [editingTeam, setEditingTeam] = useState<TeamWithPlayers | null>(null)
 
-  const handleCreate = async () => {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    if (!season)  { showToast('Нет активного сезона', 'error'); return }
+  // Редактирование названия лиги
+  const [renamingLeague, setRenamingLeague] = useState(false)
+  const [leagueName, setLeagueName] = useState(league.name)
+  const [savingLeagueName, setSavingLeagueName] = useState(false)
 
-    setSaving(true)
-    const { error } = await createLeague({
-      seasonId:  season.id,
-      name:      trimmed,
-      sortOrder: leagues.length,
-    })
-    setSaving(false)
+  // Добавление команды
+  const [showAddTeam, setShowAddTeam] = useState(false)
+  const [newTeamName, setNewTeamName] = useState('')
+  const [newTeamColor, setNewTeamColor] = useState(COLOR_PALETTE[0].hex)
+  const [addingTeam, setAddingTeam] = useState(false)
+  const [teamError, setTeamError] = useState('')
 
-    if (error) {
-      showToast(`Ошибка: ${error}`, 'error')
-    } else {
-      setSuccess(true)
-      setName('')
-      showToast(`Лига «${trimmed}» создана`, 'success', 3000)
-      setTimeout(() => setSuccess(false), 2000)
+  const handleSaveLeagueName = async () => {
+    if (!leagueName.trim() || leagueName.trim() === league.name) {
+      setRenamingLeague(false)
+      setLeagueName(league.name)
+      return
     }
+    setSavingLeagueName(true)
+    const { error } = await (updateLeague as (args: UpdateLeagueArgs) => Promise<{ error: string | null }>)({ leagueId: league.id, name: leagueName.trim() })
+    setSavingLeagueName(false)
+    if (error) { showToast(error, 'error'); return }
+    setRenamingLeague(false)
+    showToast('Лига переименована', 'success')
   }
 
-  const handleDelete = (leagueId: string, leagueName: string) => {
+  const handleDeleteLeague = () => {
     showConfirm({
-      title:       'Удалить лигу',
-      message:     `«${leagueName}» будет удалена вместе со всеми командами и матчами. Отменить нельзя.`,
+      title: 'Удалить лигу?',
+      message: `Лига «${league.name}» и все её команды будут удалены безвозвратно.`,
       confirmText: 'Удалить',
       isDangerous: true,
       onConfirm: async () => {
-        const { error } = await deleteLeague(leagueId)
-        if (error) showToast(`Ошибка: ${error}`, 'error')
-        else       showToast(`Лига «${leagueName}» удалена`, 'success', 3000)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (supabase as any).from('leagues').delete().eq('id', league.id)
+        if (error) { showToast(error.message, 'error'); return }
+        showToast('Лига удалена', 'success')
+        onLeagueDeleted()
       },
     })
   }
 
-  return (
-    <div className="space-y-4">
-
-      {/* Список существующих лиг */}
-      {loadingLeagues ? (
-        <Spinner className="py-6" />
-      ) : leagues.length === 0 ? (
-        <p className="text-xs text-center py-3" style={{ color: 'var(--color-brand-outline)' }}>
-          В текущем сезоне нет лиг
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {leagues.map(l => (
-            <div
-              key={l.id}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-              style={{ background: 'rgba(255,255,255,0.025)' }}
-            >
-              <Trophy size={14} style={{ color: 'var(--color-brand-primary)', flexShrink: 0 }} />
-              <span className="flex-1 text-sm font-medium" style={{ color: 'var(--color-brand-text)' }}>
-                {l.name}
-              </span>
-              <button
-                type="button"
-                onClick={() => handleDelete(l.id, l.name)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
-                title="Удалить лигу"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Форма создания */}
-      <div className="flex gap-2 mt-2">
-        <input
-          type="text"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleCreate()}
-          placeholder="Название новой лиги…"
-          style={inputStyle}
-          onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-          onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
-        />
-        <button
-          type="button"
-          disabled={saving || !name.trim()}
-          onClick={handleCreate}
-          className="flex items-center gap-1.5 px-4 rounded-xl text-sm font-bold transition-all flex-shrink-0 disabled:opacity-40"
-          style={success
-            ? { background: 'rgba(122,219,138,0.15)', color: 'var(--color-brand-primary)', border: '1px solid rgba(122,219,138,0.25)' }
-            : { background: 'var(--color-brand-accent)', color: '#fff' }
-          }
-        >
-          {saving
-            ? <Loader2 size={15} className="animate-spin" />
-            : success
-              ? <Check size={15} />
-              : <Plus size={15} />}
-          {success ? 'Создано' : 'Создать'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Секция 2: Команды
-// ─────────────────────────────────────────────────────────────────────────────
-
-function TeamsSection() {
-  const {
-    leagues, selectedLeague, selectLeague,
-    teams, loadingTeams,
-    createTeam, deleteTeam, updateTeam,
-  } = useData()
-  const { showToast, showConfirm } = useDialogs()
-
-  // ── Создание новой команды ───────────────────────────────────────────────────
-  const [name,          setName]          = useState('')
-  const [color,         setColor]         = useState(TEAM_COLORS[0])
-  const [logoUrl,       setLogoUrl]       = useState('')
-  const [uploadingLogo, setUploadingLogo] = useState(false)
-  const [saving,        setSaving]        = useState(false)
-  const [success,       setSuccess]       = useState(false)
-  const logoInputRef = useRef<HTMLInputElement>(null)
-
-  // ── Редактирование существующей команды ─────────────────────────────────────
-  const [editingTeamId,     setEditingTeamId]     = useState<string | null>(null)
-  const [editName,          setEditName]          = useState('')
-  const [editColor,         setEditColor]         = useState(TEAM_COLORS[0])
-  const [editLogoUrl,       setEditLogoUrl]       = useState('')
-  const [editUploadingLogo, setEditUploadingLogo] = useState(false)
-  const [editSaving,        setEditSaving]        = useState(false)
-  const editLogoInputRef = useRef<HTMLInputElement>(null)
-
-  const leagueOptions = leagues.map(l => ({ value: l.id, label: l.name }))
-
-  // ── Загрузка логотипа (создание) ─────────────────────────────────────────
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.currentTarget.files?.[0]
-    if (!file) return
-    setUploadingLogo(true)
-    const fileName = `team-${generateUUID()}-${Date.now()}.jpg`
-    const result = await uploadAndCompressImage('team-logos', file, 'teams', fileName)
-    if (result) setLogoUrl(result.url)
-    else showToast('Ошибка при загрузке логотипа', 'error')
-    setUploadingLogo(false)
-    e.currentTarget.value = ''
+  const handleAddTeam = async () => {
+    if (!newTeamName.trim()) { setTeamError('Введите название'); return }
+    setAddingTeam(true)
+    const id = generateUUID()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).from('teams').insert({ id, league_id: league.id, name: newTeamName.trim(), color: newTeamColor, logo_url: null })
+    setAddingTeam(false)
+    if (error) { setTeamError(error.message); return }
+    refetchTeams()
+    setNewTeamName('')
+    setNewTeamColor(COLOR_PALETTE[0].hex)
+    setShowAddTeam(false)
+    setTeamError('')
   }
 
-  // ── Загрузка логотипа (редактирование) ───────────────────────────────────
-  const handleEditLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.currentTarget.files?.[0]
-    if (!file) return
-    setEditUploadingLogo(true)
-    const fileName = `team-${generateUUID()}-${Date.now()}.jpg`
-    const result = await uploadAndCompressImage('team-logos', file, 'teams', fileName)
-    if (result) setEditLogoUrl(result.url)
-    else showToast('Ошибка при загрузке логотипа', 'error')
-    setEditUploadingLogo(false)
-    e.currentTarget.value = ''
-  }
-
-  // ── Начать редактирование команды ────────────────────────────────────────
-  const handleStartEdit = (t: typeof teams[0]) => {
-    setEditingTeamId(t.id)
-    setEditName(t.name)
-    setEditColor(t.color)
-    setEditLogoUrl(t.logo_url || '')
-  }
-
-  const handleCancelEdit = () => {
-    setEditingTeamId(null)
-    setEditName('')
-    setEditColor(TEAM_COLORS[0])
-    setEditLogoUrl('')
-  }
-
-  const handleSaveEdit = async () => {
-    if (!editingTeamId || !editName.trim()) return
-    setEditSaving(true)
-    const { error } = await updateTeam({
-      teamId:  editingTeamId,
-      name:    editName.trim(),
-      color:   editColor,
-      logoUrl: editLogoUrl || null,
-    })
-    setEditSaving(false)
-    if (error) showToast(`Ошибка: ${error}`, 'error')
-    else {
-      showToast('Команда обновлена', 'success', 3000)
-      handleCancelEdit()
-    }
-  }
-
-  const handleCreate = async () => {
-    const trimmed = name.trim()
-    if (!trimmed)       return
-    if (!selectedLeague) { showToast('Выберите лигу', 'error'); return }
-
-    setSaving(true)
-    const { error } = await createTeam({ leagueId: selectedLeague.id, name: trimmed, color, logoUrl: logoUrl || null })
-    setSaving(false)
-
-    if (error) {
-      showToast(`Ошибка: ${error}`, 'error')
-    } else {
-      setSuccess(true)
-      setName('')
-      setLogoUrl('')
-      showToast(`Команда «${trimmed}» добавлена`, 'success', 3000)
-      setTimeout(() => setSuccess(false), 2000)
-    }
-  }
-
-  const handleDelete = (teamId: string, teamName: string) => {
+  const handleDeleteTeam = (teamId: string, name: string) => {
     showConfirm({
-      title:       'Удалить команду',
-      message:     `«${teamName}» будет удалена вместе со всеми её матчами. Это действие нельзя отменить.`,
+      title: 'Удалить команду?',
+      message: `Команда «${name}» будет удалена безвозвратно.`,
       confirmText: 'Удалить',
       isDangerous: true,
       onConfirm: async () => {
         const { error } = await deleteTeam(teamId)
-        if (error) showToast(`Ошибка: ${error}`, 'error')
-        else       showToast(`Команда «${teamName}» удалена`, 'success', 3000)
+        if (error) { showToast(error, 'error'); return }
+        refetchTeams()
+        showToast('Команда удалена', 'success')
       },
     })
   }
 
   return (
-    <div className="space-y-4">
+    <>
+      <div className="border border-gray-700/50 rounded-xl overflow-hidden">
+        {/* Шапка лиги */}
+        <div className="flex items-center gap-2 px-4 py-3 bg-gray-800/60">
+          <Shield className="w-4 h-4 text-emerald-500 flex-shrink-0" />
 
-      {/* Переключатель лиги */}
-      {leagues.length > 1 && (
-        <div>
-          <p className="text-xs mb-1.5" style={{ color: 'var(--color-brand-text-muted)' }}>Лига</p>
-          <CustomSelect
-            value={selectedLeague?.id ?? ''}
-            onChange={v => {
-              const l = leagues.find(x => x.id === v)
-              if (l) selectLeague(l)
-            }}
-            options={leagueOptions}
-          />
-        </div>
-      )}
-
-      {/* Список команд */}
-      {loadingTeams ? (
-        <Spinner className="py-6" />
-      ) : teams.length === 0 ? (
-        <p className="text-xs text-center py-3" style={{ color: 'var(--color-brand-outline)' }}>
-          В лиге нет команд
-        </p>
-      ) : (
-        <div className="space-y-1.5">
-          {teams.map(t => (
-            <div key={t.id}>
-              {/* Строка команды */}
-              <div
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
-                style={{
-                  background: editingTeamId === t.id
-                    ? 'rgba(122,219,138,0.07)'
-                    : 'rgba(255,255,255,0.025)',
-                  border: editingTeamId === t.id
-                    ? '1px solid rgba(122,219,138,0.20)'
-                    : '1px solid transparent',
-                }}
-              >
-                {t.logo_url ? (
-                  <img src={t.logo_url} alt={t.name}
-                    className="w-7 h-7 rounded-full object-cover flex-shrink-0"
-                    style={{ border: `2px solid ${t.color}` }}
-                  />
-                ) : (
-                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: t.color }} />
-                )}
-                <span className="flex-1 text-sm font-medium truncate" style={{ color: 'var(--color-brand-text)' }}>
-                  {t.name}
-                </span>
-                <span className="label-caps text-[9px] flex-shrink-0" style={{ color: 'var(--color-brand-outline)' }}>
-                  {t.players?.length ?? 0} игр.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => editingTeamId === t.id ? handleCancelEdit() : handleStartEdit(t)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
-                  style={editingTeamId === t.id
-                    ? { background: 'rgba(122,219,138,0.18)', color: 'var(--color-brand-primary)' }
-                    : { background: 'rgba(96,165,250,0.10)', color: '#60a5fa' }
-                  }
-                  onMouseEnter={e => {
-                    if (editingTeamId !== t.id)
-                      e.currentTarget.style.background = 'rgba(96,165,250,0.22)'
-                  }}
-                  onMouseLeave={e => {
-                    if (editingTeamId !== t.id)
-                      e.currentTarget.style.background = 'rgba(96,165,250,0.10)'
-                  }}
-                  title={editingTeamId === t.id ? 'Закрыть' : 'Редактировать команду'}
-                >
-                  {editingTeamId === t.id ? <X size={13} /> : <Edit2 size={13} />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDelete(t.id, t.name)}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0"
-                  style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
-                  title="Удалить команду"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-
-              {/* Инлайн-форма редактирования */}
-              {editingTeamId === t.id && (
-                <div
-                  className="mt-1 mb-2 p-4 rounded-xl space-y-3"
-                  style={{ background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(122,219,138,0.15)' }}
-                >
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSaveEdit()}
-                    placeholder="Название команды…"
-                    style={inputStyle}
-                    onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-                    onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
-                  />
-
-                  <div>
-                    <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>Цвет команды</p>
-                    <div className="flex flex-wrap gap-2">
-                      {TEAM_COLORS.map(c => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setEditColor(c)}
-                          className="w-8 h-8 rounded-lg transition-all"
-                          style={{
-                            backgroundColor: c,
-                            outline: editColor === c ? `2px solid ${c}` : 'none',
-                            outlineOffset: '2px',
-                            transform: editColor === c ? 'scale(1.15)' : 'scale(1)',
-                            boxShadow: editColor === c ? `0 0 10px ${c}66` : 'none',
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>Логотип (опционально)</p>
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
-                        style={{ background: 'rgba(255,255,255,0.05)', border: `2px solid ${editLogoUrl ? editColor : 'rgba(255,255,255,0.10)'}` }}
-                      >
-                        {editLogoUrl ? (
-                          <img src={editLogoUrl} alt="Logo" className="w-full h-full object-cover rounded-full" />
-                        ) : (
-                          <Trophy size={22} style={{ color: 'var(--color-brand-outline)' }} />
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => editLogoInputRef.current?.click()}
-                        disabled={editUploadingLogo}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
-                        style={{ background: 'rgba(52,152,219,0.10)', color: '#60a5fa', border: '1px solid rgba(52,152,219,0.20)' }}
-                        onMouseEnter={e => (e.currentTarget.style.background = 'rgba(52,152,219,0.20)')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'rgba(52,152,219,0.10)')}
-                      >
-                        {editUploadingLogo ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-                        {editUploadingLogo ? 'Загрузка...' : editLogoUrl ? 'Изменить' : 'Загрузить логотип'}
-                      </button>
-                      {editLogoUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setEditLogoUrl('')}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
-                          style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
-                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
-                          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
-                          title="Удалить логотип"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      ref={editLogoInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleEditLogoUpload}
-                      className="hidden"
-                    />
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleCancelEdit}
-                      className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all"
-                      style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--color-brand-text-muted)', border: '1px solid rgba(255,255,255,0.10)' }}
-                    >
-                      Отмена
-                    </button>
-                    <button
-                      type="button"
-                      disabled={editSaving || !editName.trim()}
-                      onClick={handleSaveEdit}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-bold transition-all disabled:opacity-40"
-                      style={{ background: 'var(--color-brand-accent)', color: '#fff' }}
-                    >
-                      {editSaving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-                      {editSaving ? 'Сохранение...' : 'Сохранить'}
-                    </button>
-                  </div>
-                </div>
-              )}
+          {renamingLeague ? (
+            <div className="flex-1 flex items-center gap-2">
+              <input
+                type="text"
+                value={leagueName}
+                onChange={e => setLeagueName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveLeagueName(); if (e.key === 'Escape') { setRenamingLeague(false); setLeagueName(league.name) } }}
+                autoFocus
+                className="flex-1 bg-gray-900 border border-emerald-500/50 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500"
+              />
+              <button onClick={handleSaveLeagueName} disabled={savingLeagueName} className="text-emerald-400 hover:text-emerald-300 p-1">
+                {savingLeagueName ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              </button>
+              <button onClick={() => { setRenamingLeague(false); setLeagueName(league.name) }} className="text-gray-400 hover:text-white p-1">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          ))}
-        </div>
-      )}
+          ) : (
+            <button
+              className="flex-1 text-left text-sm font-semibold text-gray-200 hover:text-white transition-colors"
+              onClick={() => setExpanded(e => !e)}
+            >
+              {league.name}
+              <span className="ml-2 text-xs text-gray-500 font-normal">{teams.length} команд</span>
+            </button>
+          )}
 
-      {/* Форма создания новой команды */}
-      {selectedLeague && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
+          {/* Действия */}
+          {!renamingLeague && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={() => setRenamingLeague(true)}
+                className="p-1.5 text-gray-500 hover:text-emerald-400 hover:bg-gray-700 rounded-lg transition-colors"
+                title="Переименовать лигу"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleDeleteLeague}
+                className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-700 rounded-lg transition-colors"
+                title="Удалить лигу"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setExpanded(e => !e)}
+                className="p-1.5 text-gray-500 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Команды */}
+        {expanded && (
+          <div className="px-3 pb-3 pt-2 bg-gray-900/40 space-y-2">
+            {loadingTeams && <Spinner className="py-4" />}
+            {!loadingTeams && teams.length === 0 && (
+              <p className="text-gray-500 text-sm text-center py-3">Команд нет</p>
+            )}
+            {teams.map(team => (
+              <TeamRow
+                key={team.id}
+                team={team}
+                onEdit={setEditingTeam}
+                onDelete={handleDeleteTeam}
+              />
+            ))}
+
+            {/* Форма добавления команды */}
+            {showAddTeam ? (
+              <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-3 space-y-2.5 mt-2">
+                <input
+                  type="text"
+                  value={newTeamName}
+                  onChange={e => setNewTeamName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddTeam()}
+                  placeholder="Название команды"
+                  autoFocus
+                  className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {COLOR_PALETTE.slice(0, 18).map(c => (
+                    <button
+                      key={c.hex}
+                      onClick={() => setNewTeamColor(c.hex)}
+                      className="w-6 h-6 rounded-full border-2 transition-transform"
+                      style={{
+                        backgroundColor: c.hex,
+                        borderColor: newTeamColor === c.hex ? 'white' : 'transparent',
+                        transform: newTeamColor === c.hex ? 'scale(1.25)' : 'scale(1)',
+                      }}
+                    />
+                  ))}
+                </div>
+                {teamError && <p className="text-red-400 text-xs">{teamError}</p>}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowAddTeam(false); setNewTeamName(''); setTeamError('') }}
+                    className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-sm py-2 rounded-lg transition-colors"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    onClick={handleAddTeam}
+                    disabled={addingTeam}
+                    className="flex-1 bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-700 text-white text-sm py-2 rounded-lg flex items-center justify-center gap-1 transition-colors"
+                  >
+                    {addingTeam ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Добавить'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowAddTeam(true)}
+                className="w-full flex items-center justify-center gap-1.5 text-sm text-gray-400 hover:text-emerald-400 border border-dashed border-gray-700 hover:border-emerald-600 rounded-xl py-2.5 transition-colors mt-1"
+              >
+                <Plus className="w-4 h-4" /> Добавить команду
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Модал редактирования команды */}
+      {editingTeam && (
+        <TeamEditModal
+          team={editingTeam}
+          onClose={() => setEditingTeam(null)}
+          onSave={() => { setEditingTeam(null); refetchTeams() }}
+          onRefetch={refetchTeams}
+        />
+      )}
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AdminSeasonCard
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AdminSeasonCard({ season, onSeasonDeleted }: { season: Season; onSeasonDeleted: () => void }) {
+  const { updateSeason, deleteSeason, createLeague } = useData()
+  const { showConfirm, showToast } = useDialogs()
+  const { leagues, loading: loadingLeagues, refetch: refetchLeagues } = useLeagues(season.id)
+
+  const [expanded, setExpanded] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [seasonName, setSeasonName] = useState(season.name)
+  const [savingName, setSavingName] = useState(false)
+
+  const [showAddLeague, setShowAddLeague] = useState(false)
+  const [newLeagueName, setNewLeagueName] = useState('')
+  const [addingLeague, setAddingLeague] = useState(false)
+  const [leagueError, setLeagueError] = useState('')
+
+  const isActive = season.status === 'active'
+
+  const handleSaveName = async () => {
+    if (!seasonName.trim() || seasonName.trim() === season.name) {
+      setRenaming(false); setSeasonName(season.name); return
+    }
+    setSavingName(true)
+    const { error } = await updateSeason({ seasonId: season.id, name: seasonName.trim() })
+    setSavingName(false)
+    if (error) { showToast(error, 'error'); return }
+    setRenaming(false)
+    showToast('Сезон переименован', 'success')
+  }
+
+  const handleToggleStatus = () => {
+    const newStatus = isActive ? 'archived' : 'active'
+    const msg = isActive
+      ? `Архивировать сезон «${season.name}»?`
+      : `Активировать сезон «${season.name}»? Текущий активный сезон будет архивирован.`
+    showConfirm({
+      title: isActive ? 'Архивировать сезон?' : 'Активировать сезон?',
+      message: msg,
+      confirmText: isActive ? 'Архивировать' : 'Активировать',
+      onConfirm: async () => {
+        const { error } = await updateSeason({ seasonId: season.id, status: newStatus })
+        if (error) showToast(error, 'error')
+        else showToast(isActive ? 'Сезон архивирован' : 'Сезон активирован', 'success')
+      },
+    })
+  }
+
+  const handleDeleteSeason = () => {
+    showConfirm({
+      title: 'Удалить сезон?',
+      message: `Сезон «${season.name}» и все вложенные данные будут удалены безвозвратно.`,
+      confirmText: 'Удалить',
+      isDangerous: true,
+      onConfirm: async () => {
+        const { error } = await deleteSeason(season.id)
+        if (error) { showToast(error, 'error'); return }
+        showToast('Сезон удалён', 'success')
+        onSeasonDeleted()
+      },
+    })
+  }
+
+  const handleAddLeague = async () => {
+    if (!newLeagueName.trim()) { setLeagueError('Введите название'); return }
+    setAddingLeague(true)
+    const { error } = await createLeague({ seasonId: season.id, name: newLeagueName.trim(), sortOrder: leagues.length })
+    setAddingLeague(false)
+    if (error) { setLeagueError(error); return }
+    refetchLeagues()
+    setNewLeagueName('')
+    setShowAddLeague(false)
+    setLeagueError('')
+    showToast('Лига добавлена', 'success')
+  }
+
+  return (
+    <div
+      className={`rounded-2xl border overflow-hidden transition-colors ${
+        isActive
+          ? 'border-emerald-600/40 bg-emerald-950/10'
+          : 'border-gray-700/50 bg-gray-900/20'
+      }`}
+    >
+      {/* Шапка сезона */}
+      <div
+        className={`flex items-center gap-3 px-5 py-4 ${isActive ? 'bg-emerald-900/10' : 'bg-gray-800/40'}`}
+      >
+        {/* Иконка статуса */}
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+          isActive ? 'bg-emerald-500/20' : 'bg-gray-700/40'
+        }`}>
+          {isActive
+            ? <Star className="w-5 h-5 text-emerald-400" />
+            : <Archive className="w-5 h-5 text-gray-400" />
+          }
+        </div>
+
+        {/* Название */}
+        {renaming ? (
+          <div className="flex-1 flex items-center gap-2">
             <input
               type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreate()}
-              placeholder="Название команды…"
-              style={inputStyle}
-              onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-              onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
+              value={seasonName}
+              onChange={e => setSeasonName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveName(); if (e.key === 'Escape') { setRenaming(false); setSeasonName(season.name) } }}
+              autoFocus
+              className="flex-1 bg-gray-900 border border-emerald-500/50 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-emerald-500"
             />
+            <button onClick={handleSaveName} disabled={savingName} className="text-emerald-400 hover:text-emerald-300 p-1">
+              {savingName ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            </button>
+            <button onClick={() => { setRenaming(false); setSeasonName(season.name) }} className="text-gray-400 hover:text-white p-1">
+              <X className="w-4 h-4" />
+            </button>
           </div>
-
-          {/* Выбор цвета команды */}
-          <div>
-            <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>Цвет команды</p>
-            <div className="flex flex-wrap gap-2">
-              {TEAM_COLORS.map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className="w-8 h-8 rounded-lg transition-all"
-                  style={{
-                    backgroundColor: c,
-                    outline: color === c ? `2px solid ${c}` : 'none',
-                    outlineOffset: '2px',
-                    transform: color === c ? 'scale(1.15)' : 'scale(1)',
-                    boxShadow: color === c ? `0 0 10px ${c}66` : 'none',
-                  }}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Загрузка логотипа команды */}
-          <div>
-            <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>Логотип команды (опционально)</p>
-            <div className="flex items-center gap-3">
-              {/* Превью логотипа — увеличенный */}
-              <div
-                className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
-                style={{ background: 'rgba(255,255,255,0.05)', border: `2px solid ${logoUrl ? color : 'rgba(255,255,255,0.10)'}` }}
-              >
-                {logoUrl ? (
-                  <img src={logoUrl} alt="Logo preview" className="w-full h-full object-cover rounded-full" />
-                ) : (
-                  <Trophy size={22} style={{ color: 'var(--color-brand-outline)' }} />
-                )}
-              </div>
-              {/* Кнопка загрузки */}
-              <button
-                type="button"
-                onClick={() => logoInputRef.current?.click()}
-                disabled={uploadingLogo}
-                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
-                style={{ background: 'rgba(52,152,219,0.10)', color: '#60a5fa', border: '1px solid rgba(52,152,219,0.20)' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(52,152,219,0.20)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(52,152,219,0.10)')}
-              >
-                {uploadingLogo
-                  ? <Loader2 size={13} className="animate-spin" />
-                  : <Upload size={13} />}
-                {uploadingLogo ? 'Загрузка...' : logoUrl ? 'Изменить логотип' : 'Загрузить логотип'}
-              </button>
-              {/* Удалить логотип */}
-              {logoUrl && (
-                <button
-                  type="button"
-                  onClick={() => setLogoUrl('')}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors"
-                  style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
-                  title="Убрать логотип"
-                >
-                  <Trash2 size={12} />
-                </button>
+        ) : (
+          <button
+            className="flex-1 text-left"
+            onClick={() => setExpanded(e => !e)}
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-white">{season.name}</span>
+              {isActive && (
+                <span className="text-xs bg-emerald-600/30 text-emerald-400 px-2 py-0.5 rounded-full font-medium border border-emerald-600/30">
+                  Активный
+                </span>
               )}
             </div>
-            <input
-              ref={logoInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleLogoUpload}
-              className="hidden"
-            />
-          </div>
-
-          <button
-            type="button"
-            disabled={saving || !name.trim()}
-            onClick={handleCreate}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
-            style={success
-              ? { background: 'rgba(122,219,138,0.15)', color: 'var(--color-brand-primary)', border: '1px solid rgba(122,219,138,0.25)' }
-              : { background: 'var(--color-brand-accent)', color: '#fff' }
-            }
-          >
-            {saving
-              ? <Loader2 size={15} className="animate-spin" />
-              : success
-                ? <Check size={15} />
-                : <Plus size={15} />}
-            {success ? 'Добавлено' : 'Добавить команду'}
+            <p className="text-xs text-gray-500 mt-0.5">{leagues.length} лиг · {season.year}</p>
           </button>
+        )}
+
+        {/* Действия */}
+        {!renaming && (
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => setRenaming(true)}
+              className="p-1.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-700 rounded-lg transition-colors"
+              title="Переименовать"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleToggleStatus}
+              className={`p-1.5 hover:bg-gray-700 rounded-lg transition-colors ${
+                isActive
+                  ? 'text-gray-400 hover:text-orange-400'
+                  : 'text-gray-400 hover:text-emerald-400'
+              }`}
+              title={isActive ? 'Архивировать' : 'Активировать'}
+            >
+              {isActive ? <Archive className="w-4 h-4" /> : <Star className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={handleDeleteSeason}
+              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700 rounded-lg transition-colors"
+              title="Удалить сезон"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              {expanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Лиги */}
+      {expanded && (
+        <div className="px-4 pb-4 pt-3 space-y-2">
+          {loadingLeagues && <Spinner className="py-4" />}
+          {!loadingLeagues && leagues.length === 0 && (
+            <p className="text-gray-500 text-sm text-center py-3">Лиг нет</p>
+          )}
+          {leagues.map(league => (
+            <LeagueRow
+              key={league.id}
+              league={league}
+              onLeagueDeleted={refetchLeagues}
+            />
+          ))}
+
+          {/* Добавить лигу */}
+          {showAddLeague ? (
+            <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-3 space-y-2.5 mt-2">
+              <input
+                type="text"
+                value={newLeagueName}
+                onChange={e => setNewLeagueName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddLeague()}
+                placeholder="Название лиги"
+                autoFocus
+                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-emerald-500"
+              />
+              {leagueError && <p className="text-red-400 text-xs">{leagueError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowAddLeague(false); setNewLeagueName(''); setLeagueError('') }}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-sm py-2 rounded-lg transition-colors"
+                >
+                  Отмена
+                </button>
+                <button
+                  onClick={handleAddLeague}
+                  disabled={addingLeague}
+                  className="flex-1 bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-700 text-white text-sm py-2 rounded-lg flex items-center justify-center gap-1 transition-colors"
+                >
+                  {addingLeague ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Добавить'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAddLeague(true)}
+              className="w-full flex items-center justify-center gap-1.5 text-sm text-gray-400 hover:text-emerald-400 border border-dashed border-gray-700 hover:border-emerald-600 rounded-xl py-2.5 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Добавить лигу
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -930,303 +544,51 @@ function TeamsSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Секция 3: Туры — EPL-стиль
+// AdminPanelPage (главный компонент)
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface FixtureRow {
-  id:     string
-  teamAId: string
-  teamBId: string
-}
+export default function AdminPanelPage() {
+  const { seasons, loadingSeasons, refetchSeasons } = useData()
+  const [showWizard, setShowWizard] = useState(false)
 
-function ToursSection() {
-  const {
-    selectedLeague, teams, matches,
-    loadingTeams, loadingMatches,
-    createMatch,
-  } = useData()
-  const { showToast } = useDialogs()
-
-  // Следующий номер тура = max(tour) + 1 в текущей лиге
-  const existingTours = Array.from(new Set(matches.map(m => m.tour))).sort((a, b) => b - a)
-  const nextTour = (existingTours[0] ?? 0) + 1
-
-  const [tourNum,  setTourNum]  = useState<number>(nextTour)
-  const [date,     setDate]     = useState('')
-  const [time,     setTime]     = useState('18:00')
-  const [fixtures, setFixtures] = useState<FixtureRow[]>([{ id: generateUUID(), teamAId: '', teamBId: '' }])
-  const [saving,   setSaving]   = useState(false)
-  const [success,  setSuccess]  = useState(false)
-
-  const teamOptions = teams.map(t => ({ value: t.id, label: t.name, color: t.color }))
-
-  // Обновить строку фикстуры
-  const updateFixture = (id: string, field: 'teamAId' | 'teamBId', value: string) => {
-    setFixtures(rows => rows.map(r => r.id === id ? { ...r, [field]: value } : r))
-  }
-
-  const addFixture = () => setFixtures(rows => [...rows, { id: generateUUID(), teamAId: '', teamBId: '' }])
-
-  const removeFixture = (id: string) =>
-    setFixtures(rows => rows.length > 1 ? rows.filter(r => r.id !== id) : rows)
-
-  const handleSave = async () => {
-    const valid = fixtures.filter(f => f.teamAId && f.teamBId && f.teamAId !== f.teamBId)
-    if (valid.length === 0) {
-      showToast('Добавьте хотя бы один матч с разными командами', 'error')
-      return
-    }
-    if (!selectedLeague) { showToast('Выберите лигу', 'error'); return }
-
-    const scheduledAt = date
-      ? new Date(`${date}T${time}:00`).toISOString()
-      : null
-
-    setSaving(true)
-    let hasError = false
-
-    for (const f of valid) {
-      const { error } = await createMatch({
-        leagueId:    selectedLeague.id,
-        teamAId:     f.teamAId,
-        teamBId:     f.teamBId,
-        tour:        tourNum,
-        scheduledAt,
-      })
-      if (error) { showToast(`Ошибка: ${error}`, 'error'); hasError = true; break }
-    }
-
-    setSaving(false)
-
-    if (!hasError) {
-      setSuccess(true)
-      showToast(`Тур ${tourNum}: ${valid.length} матч(ей) добавлено`, 'success', 4000)
-      // Сброс
-      setTimeout(() => {
-        setSuccess(false)
-        setTourNum(n => n + 1)
-        setFixtures([{ id: generateUUID(), teamAId: '', teamBId: '' }])
-        setDate('')
-      }, 2000)
-    }
-  }
-
-  if (loadingTeams || loadingMatches) return <Spinner className="py-6" />
-  if (!selectedLeague)                return <Empty text="Выберите лигу" />
-  if (teams.length < 2)               return (
-    <p className="text-xs text-center py-3" style={{ color: 'var(--color-brand-outline)' }}>
-      Нужно минимум 2 команды в лиге
-    </p>
-  )
+  if (loadingSeasons) return <Spinner className="py-12" />
 
   return (
-    <div className="space-y-4">
-
-      {/* Информация о турах */}
-      {existingTours.length > 0 && (
-        <div
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-          style={{ background: 'rgba(0,117,49,0.08)', color: 'var(--color-brand-text-muted)' }}
-        >
-          <ListOrdered size={13} style={{ color: 'var(--color-brand-primary)', flexShrink: 0 }} />
-          В лиге уже {existingTours.length} тур(а): туры с 1 по {existingTours[0]}
-        </div>
-      )}
-
-      {/* Номер тура */}
-      <div className="flex items-center gap-3">
-        <div className="flex-1">
-          <p className="text-xs mb-1.5" style={{ color: 'var(--color-brand-text-muted)' }}>Номер тура</p>
-          <input
-            type="number"
-            min={1}
-            value={tourNum}
-            onChange={e => setTourNum(Math.max(1, +e.target.value))}
-            style={inputStyle}
-            onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-            onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
-          />
-        </div>
-        <div className="flex-1">
-          <p className="text-xs mb-1.5" style={{ color: 'var(--color-brand-text-muted)' }}>Дата (опционально)</p>
-          <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
-            style={{ ...inputStyle, colorScheme: 'dark' }}
-            onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-            onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
-          />
-        </div>
-        <div className="w-28">
-          <p className="text-xs mb-1.5" style={{ color: 'var(--color-brand-text-muted)' }}>Время</p>
-          <input
-            type="time"
-            value={time}
-            onChange={e => setTime(e.target.value)}
-            style={{ ...inputStyle, colorScheme: 'dark' }}
-            onFocus={e => (e.currentTarget.style.border = '1.5px solid rgba(122,219,138,0.35)')}
-            onBlur={e  => (e.currentTarget.style.border = '1.5px solid rgba(255,255,255,0.10)')}
-          />
-        </div>
-      </div>
-
-      {/* Фикстуры */}
-      <div>
-        <p className="text-xs mb-2" style={{ color: 'var(--color-brand-text-muted)' }}>
-          Матчи тура {tourNum}
-        </p>
-        <div className="space-y-2">
-          {fixtures.map((f, idx) => {
-            const usedInA = fixtures.filter(x => x.id !== f.id).map(x => x.teamAId)
-            const usedInB = fixtures.filter(x => x.id !== f.id).map(x => x.teamBId)
-
-            return (
-              <div key={f.id} className="flex items-center gap-2">
-
-                {/* Номер */}
-                <span
-                  className="label-caps text-[9px] w-5 text-center flex-shrink-0"
-                  style={{ color: 'var(--color-brand-outline)' }}
-                >
-                  {idx + 1}
-                </span>
-
-                {/* Команда A */}
-                <div className="flex-1 min-w-0">
-                  <CustomSelect
-                    value={f.teamAId}
-                    onChange={v => {
-                      const val = String(v)
-                      updateFixture(f.id, 'teamAId', val)
-                      if (val === f.teamBId) updateFixture(f.id, 'teamBId', '')
-                    }}
-                    options={teamOptions}
-                    placeholder="Хозяева"
-                    accentColor={teams.find(t => t.id === f.teamAId)?.color}
-                  />
-                </div>
-
-                {/* Разделитель */}
-                <span
-                  className="text-sm font-black flex-shrink-0"
-                  style={{ color: 'rgba(255,255,255,0.20)' }}
-                >vs</span>
-
-                {/* Команда B */}
-                <div className="flex-1 min-w-0">
-                  <CustomSelect
-                    value={f.teamBId}
-                    onChange={v => updateFixture(f.id, 'teamBId', String(v))}
-                    options={teamOptions.filter(o => o.value !== f.teamAId)}
-                    placeholder="Гости"
-                    accentColor={teams.find(t => t.id === f.teamBId)?.color}
-                    align="right"
-                  />
-                </div>
-
-                {/* Кнопка удаления строки */}
-                <button
-                  type="button"
-                  onClick={() => removeFixture(f.id)}
-                  disabled={fixtures.length === 1}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors flex-shrink-0 disabled:opacity-20"
-                  style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.22)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.10)')}
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Добавить ещё матч */}
+    <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      {/* Заголовок + кнопка */}
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-lg font-bold text-white">Управление</h2>
         <button
-          type="button"
-          onClick={addFixture}
-          className="mt-2 flex items-center gap-1.5 text-xs py-2 px-3 rounded-lg transition-colors"
-          style={{ color: 'var(--color-brand-text-muted)', background: 'rgba(255,255,255,0.04)' }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.09)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+          onClick={() => setShowWizard(true)}
+          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-lg shadow-emerald-900/30"
         >
-          <Plus size={13} /> Добавить матч
+          <Plus className="w-4 h-4" />
+          Новый сезон
         </button>
       </div>
 
-      {/* Кнопка сохранить тур */}
-      <button
-        type="button"
-        disabled={saving || success}
-        onClick={handleSave}
-        className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[0.98] disabled:opacity-70"
-        style={success ? {
-          background: 'rgba(122,219,138,0.15)',
-          color:      'var(--color-brand-primary)',
-          border:     '1px solid rgba(122,219,138,0.25)',
-        } : {
-          background: 'var(--color-brand-accent)',
-          color:      '#fff',
-          boxShadow:  '0 0 20px rgba(0,117,49,0.30)',
-        }}
-      >
-        {saving
-          ? <><Loader2 size={16} className="animate-spin" /> Сохранение...</>
-          : success
-            ? <><Check size={16} /> Тур {tourNum} сохранён!</>
-            : <><ListOrdered size={16} /> Сохранить тур {tourNum} ({fixtures.filter(f => f.teamAId && f.teamBId && f.teamAId !== f.teamBId).length} матч(ей))</>
-        }
-      </button>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Главный компонент
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function AdminPanelPage() {
-  const { season } = useData()
-
-  return (
-    <div className="space-y-4">
-
-      {/* Заголовок */}
-      <div className="flex items-start gap-3 mb-2">
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{ background: 'rgba(0,117,49,0.20)', color: 'var(--color-brand-primary)' }}
-        >
-          <Trophy size={20} />
+      {/* Список сезонов */}
+      {seasons.length === 0 && (
+        <div className="text-center py-16 text-gray-500">
+          <p className="text-4xl mb-3">🏆</p>
+          <p className="font-medium">Сезонов нет</p>
+          <p className="text-sm mt-1">Нажмите «Новый сезон» чтобы начать</p>
         </div>
-        <div>
-          <h2
-            className="text-2xl sm:text-3xl font-extrabold"
-            style={{ color: 'var(--color-brand-text)' }}
-          >
-            Панель администратора
-          </h2>
-
-        </div>
+      )}
+      <div className="space-y-3">
+        {seasons.map(season => (
+          <AdminSeasonCard
+            key={season.id}
+            season={season}
+            onSeasonDeleted={refetchSeasons}
+          />
+        ))}
       </div>
 
-      {/* Секции-аккордеоны */}
-      <Section icon={<Calendar size={16} />} title="Сезоны">
-        <SeasonsSection />
-      </Section>
-
-      <Section icon={<Trophy size={16} />} title="Лиги" defaultOpen={true}>
-        <LeaguesSection />
-      </Section>
-
-      <Section icon={<Users size={16} />} title="Команды">
-        <TeamsSection />
-      </Section>
-
-      <Section icon={<ListOrdered size={16} />} title="Туры и расписание">
-        <ToursSection />
-      </Section>
+      {/* Мастер создания сезона */}
+      {showWizard && (
+        <SeasonWizard onClose={() => { setShowWizard(false); refetchSeasons() }} />
+      )}
     </div>
   )
 }

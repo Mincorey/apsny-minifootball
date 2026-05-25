@@ -101,6 +101,11 @@ export interface UpdateSeasonArgs {
   status?: 'active' | 'archived'
 }
 
+export interface UpdateLeagueArgs {
+  leagueId: string
+  name?: string
+}
+
 export interface CreatePlayedMatchArgs {
   leagueId: string
   teamAId:  string
@@ -149,9 +154,9 @@ interface DataContextValue {
   saveMatchResult:  (args: SaveMatchResultArgs) => Promise<{ error: string | null }>
 
   // CREATE операции
-  createSeason: (args: CreateSeasonArgs) => Promise<{ error: string | null }>
-  createLeague: (args: CreateLeagueArgs) => Promise<{ error: string | null }>
-  createTeam:   (args: CreateTeamArgs) => Promise<{ error: string | null }>
+  createSeason: (args: CreateSeasonArgs) => Promise<{ error: string | null; id: string | null }>
+  createLeague: (args: CreateLeagueArgs) => Promise<{ error: string | null; id: string | null }>
+  createTeam:   (args: CreateTeamArgs)   => Promise<{ error: string | null; id: string | null }>
   createMatch:  (args: CreateMatchArgs) => Promise<{ error: string | null }>
   createPlayer: (args: CreatePlayerArgs) => Promise<{ error: string | null }>
 
@@ -166,6 +171,7 @@ interface DataContextValue {
   updateMatch:   (args: UpdateMatchArgs)  => Promise<{ error: string | null }>
   updateTeam:    (args: UpdateTeamArgs)   => Promise<{ error: string | null }>
   updateSeason:  (args: UpdateSeasonArgs) => Promise<{ error: string | null }>
+  updateLeague:  (args: UpdateLeagueArgs) => Promise<{ error: string | null }>
 
   // Создание уже сыгранного матча (без предварительного планирования)
   createPlayedMatch: (args: CreatePlayedMatchArgs) => Promise<{ error: string | null }>
@@ -264,21 +270,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [refetchMatches, refetchStandings, refetchScorers])
 
   const createSeason = useCallback(async ({ name, year }: CreateSeasonArgs) => {
-    const { error } = await supabase.from('seasons').insert({ id: generateUUID(), name, year, status: 'active' })
+    const id = generateUUID()
+    const { error } = await supabase.from('seasons').insert({ id, name, year, status: 'active' })
     if (!error) refetchSeasons()
-    return { error: error?.message ?? null }
+    return { error: error?.message ?? null, id: error ? null : id }
   }, [refetchSeasons])
 
   const createLeague = useCallback(async ({ seasonId, name, sortOrder = 0 }: CreateLeagueArgs) => {
-    const { error } = await supabase.from('leagues').insert({ id: generateUUID(), season_id: seasonId, name, sort_order: sortOrder })
+    const id = generateUUID()
+    const { error } = await supabase.from('leagues').insert({ id, season_id: seasonId, name, sort_order: sortOrder })
     if (!error) refetchLeagues()
-    return { error: error?.message ?? null }
+    return { error: error?.message ?? null, id: error ? null : id }
   }, [refetchLeagues])
 
   const createTeam = useCallback(async ({ leagueId, name, color, logoUrl }: CreateTeamArgs) => {
-    const { error } = await supabase.from('teams').insert({ id: generateUUID(), league_id: leagueId, name, color, logo_url: logoUrl ?? null })
+    const id = generateUUID()
+    const { error } = await supabase.from('teams').insert({ id, league_id: leagueId, name, color, logo_url: logoUrl ?? null })
     if (!error) refetchTeams()
-    return { error: error?.message ?? null }
+    return { error: error?.message ?? null, id: error ? null : id }
   }, [refetchTeams])
 
   const createMatch = useCallback(async ({ leagueId, teamAId, teamBId, tour, scheduledAt, venue }: CreateMatchArgs) => {
@@ -413,6 +422,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return { error: null }
   }, [refetchMatches, refetchStandings, refetchScorers])
 
+  const updateLeague = useCallback(async ({ leagueId, name }: UpdateLeagueArgs) => {
+    const update: Record<string, unknown> = {}
+    if (name !== undefined) update.name = name
+    const { error } = await supabase.from('leagues').update(update).eq('id', leagueId)
+    if (!error) refetchLeagues()
+    return { error: error?.message ?? null }
+  }, [refetchLeagues])
+
   // ── Возврат Provider ─────────────────────────────────────────────────────────
 
   return (
@@ -428,7 +445,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       saveMatchResult,
       createSeason, createLeague, createTeam, createMatch, createPlayer,
       deleteMatch, deleteTeam, deleteLeague, deleteSeason, deletePlayer,
-      updateMatch, updateTeam, updateSeason, createPlayedMatch,
+      updateMatch, updateTeam, updateSeason, updateLeague, createPlayedMatch,
       refetchTeams, refetchMatches, refetchStandings, refetchScorers,
       refetchSeasons, refetchLeagues,
     }}>
